@@ -7,6 +7,7 @@ certifi==2021.5.30
 cffi==1.14.5
 chardet==4.0.0
 cycler==0.10.0
+Cython==0.29.23
 decorator==4.4.2
 defusedxml==0.7.1
 entrypoints==0.3
@@ -38,7 +39,7 @@ nest-asyncio==1.5.1
 networkx==2.5.1
 notebook==6.4.0
 numpy==1.19.5
-opencv-contrib-python
+opencv-contrib-python==4.5.2.54
 packaging==20.9
 pandas==1.1.5
 pandocfilters==1.4.3
@@ -52,6 +53,7 @@ prompt-toolkit==3.0.18
 ptyprocess==0.7.0
 pycparser==2.20
 Pygments==2.9.0
+PyMaxflow==1.2.13
 pyparsing==2.4.7
 pyrsistent==0.17.3
 python-dateutil==2.8.1
@@ -68,6 +70,7 @@ seaborn==0.11.1
 Send2Trash==1.5.0
 six==1.16.0
 sklearn==0.0
+-e git+https://github.com/victorius35/SwimmerDetection@49bd773e9cd3760bea9b3616821723d699b1d7cd#egg=src
 terminado==0.10.1
 testpath==0.5.0
 threadpoolctl==2.1.0

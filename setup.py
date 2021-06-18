@@ -1,7 +1,7 @@
 import setuptools
 
 setuptools.setup(
-      name='Code',
+      name='src',
       version='0.0',
       description='Swimmer detection',
       author='Victor BERTRET',
