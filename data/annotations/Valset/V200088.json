@@ -1,0 +1,42 @@
+{
+ "task_name": "VALSET",
+ "annotations": [
+  {
+   "id": "0.4qopj0oshy",
+   "geometry": {
+    "vertices": [
+     0.3078125,
+     0.49166666666666664,
+     0.66875,
+     0.6645833333333333
+    ],
+    "type": "rectangle"
+   },
+   "category": "swimmer",
+   "options": {
+    "isBlue": false
+   }
+  },
+  {
+   "id": "0.wpll2d6vea",
+   "geometry": {
+    "vertices": [
+     0.665625,
+     0.6583333333333333,
+     0.665625,
+     0.6604166666666667
+    ],
+    "type": "rectangle"
+   },
+   "category": "swimmer",
+   "options": {
+    "isBlue": false
+   }
+  }
+ ],
+ "data": {
+  "type": "image",
+  "children": "",
+  "path": "Images/Valset/V200088.jpg"
+ }
+}

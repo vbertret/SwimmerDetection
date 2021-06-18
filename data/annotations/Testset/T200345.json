@@ -1,0 +1,26 @@
+{
+ "task_name": "TESTSET",
+ "annotations": [
+  {
+   "id": "0.legk2gzmzg",
+   "geometry": {
+    "vertices": [
+     0.2984375,
+     0.5895833333333333,
+     0.521875,
+     0.85
+    ],
+    "type": "rectangle"
+   },
+   "category": "swimmer",
+   "options": {
+    "isBlue": false
+   }
+  }
+ ],
+ "data": {
+  "type": "image",
+  "children": "",
+  "path": "Images/Testset/T200345.jpg"
+ }
+}

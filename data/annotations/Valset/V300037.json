@@ -1,0 +1,26 @@
+{
+ "task_name": "VALSET",
+ "annotations": [
+  {
+   "id": "0.96nw7qzz164",
+   "geometry": {
+    "vertices": [
+     0.4859375,
+     0.5520833333333334,
+     0.7984375,
+     1
+    ],
+    "type": "rectangle"
+   },
+   "category": "swimmer",
+   "options": {
+    "isBlue": false
+   }
+  }
+ ],
+ "data": {
+  "type": "image",
+  "children": "",
+  "path": "Images/Valset/V300037.jpg"
+ }
+}

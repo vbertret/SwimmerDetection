@@ -1,0 +1,26 @@
+{
+ "task_name": "TESTSET",
+ "annotations": [
+  {
+   "id": "0.2gbpoke5l2n",
+   "geometry": {
+    "vertices": [
+     0.225,
+     0.5645833333333333,
+     0.36875,
+     0.7125
+    ],
+    "type": "rectangle"
+   },
+   "category": "swimmer",
+   "options": {
+    "isBlue": false
+   }
+  }
+ ],
+ "data": {
+  "type": "image",
+  "children": "",
+  "path": "Images/Testset/T100126.jpg"
+ }
+}

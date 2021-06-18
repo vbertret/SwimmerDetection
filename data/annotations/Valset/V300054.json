@@ -1,0 +1,26 @@
+{
+ "task_name": "VALSET",
+ "annotations": [
+  {
+   "id": "0.slfade1pymf",
+   "geometry": {
+    "vertices": [
+     0.49375,
+     0.51875,
+     0.8,
+     0.975
+    ],
+    "type": "rectangle"
+   },
+   "category": "swimmer",
+   "options": {
+    "isBlue": false
+   }
+  }
+ ],
+ "data": {
+  "type": "image",
+  "children": "",
+  "path": "Images/Valset/V300054.jpg"
+ }
+}
