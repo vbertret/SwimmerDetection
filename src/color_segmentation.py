@@ -1,9 +1,9 @@
 import cv2.cv2 as cv
 import numpy as np
 import time
-from Code.Preprocessing.BBTools import union, intersection
-from Code.Annotations.read_annotation import read_annotation
-from Code.Preprocessing.WaterSurfaceDetection import surface_detection
+from src.preprocessing.bb_tools import union, intersection
+from src.annotations.read_annotation import read_annotation
+from src.preprocessing.water_surface_detection import surface_detection
 
 class ColorBB():
 

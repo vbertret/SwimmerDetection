@@ -1,7 +1,7 @@
 import numpy as np
 import cv2.cv2 as cv
 import pandas as pd
-from Code.Metrics.ModelPerformance import IoU_video
+from src.metrics.model_performance import IoU_video
 
 
 def gridBuilding(parameters):

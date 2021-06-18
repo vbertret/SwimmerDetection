@@ -2,10 +2,10 @@ import cv2.cv2
 import numpy as np
 import cv2.cv2 as cv
 from sklearn.ensemble import RandomForestClassifier
-from Code.Preprocessing.CreateDataframe import createDataframe
-from Code.Annotations.read_annotation import read_annotation
-from Code.Preprocessing.WaterSurfaceDetection import surface_detection
-from Code.Preprocessing.BBTools import union, intersection
+from src.preprocessing.create_dataframe import createDataframe
+from src.annotations.read_annotation import read_annotation
+from src.preprocessing.water_surface_detection import surface_detection
+from src.preprocessing.bb_tools import union, intersection
 import pickle
 import time
 

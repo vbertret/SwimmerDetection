@@ -1,12 +1,7 @@
-from Code.ColorSegmentation import ColorBB
-from Code.Metrics.ModelPerformance import IoU_video
-from Code.RandomForest import RandomForestBB
-from Code.Preprocessing.WaterSurfaceDetection import surface_detection
+from src.color_segmentation import ColorBB
+from src.metrics.model_performance import IoU_video
+from src.random_forest import RandomForestBB
 
 Color = ColorBB("hsv")
 
-#a, b = surface_detection(f"../Images/Testset/background/T1T2", 117, adjust_pt1=0, adjust_pt2=0)
-
-#Color.predict("../Images/Testset/T200380.jpg", debug=True, a=a, b=b)
-
-IoU_video("Images/Testset", "Annotations", Color, debug=True)
+IoU_video("../data/images/Testset", "../data/annotations", Color, debug=True)

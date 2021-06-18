@@ -3,7 +3,7 @@ import cv2.cv2 as cv
 import numpy as np
 from sklearn.mixture import BayesianGaussianMixture, GaussianMixture
 import pandas as pd
-from Code.Preprocessing.WaterSurfaceDetection import surface_detection
+from src.preprocessing.water_surface_detection import surface_detection
 import pickle
 
 gmm = pickle.load(open("../../Models/GMM_model_diag", 'rb'))
