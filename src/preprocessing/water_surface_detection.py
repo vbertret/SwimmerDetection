@@ -59,7 +59,7 @@ def variance_initialization(filename, nb_frame):
     return mean, variance
 
 
-def surface_detection(filename, nb_frame, debug=False, adjust_pt1=0, adjust_pt2=0):
+def surface_detection(filename, nb_frame, debug=False, adjust_pt1=0, adjust_pt2=20):
     """
     Detection of the surface of the water
 
@@ -91,11 +91,11 @@ def surface_detection(filename, nb_frame, debug=False, adjust_pt1=0, adjust_pt2=
     mean, variance = variance_initialization(filename, nb_frame)
 
     if debug:
-        cv.imshow("vraince", variance)
+        cv.imshow("variance", variance)
         cv.waitKey(1)
 
     # Declaration of the range values to use in order to find the best line
-    y_height = np.arange(200, 400, 2)
+    y_height = np.arange(150, 400, 2)
     degrees = np.arange(-30, 30, 2)
 
     # Search of the best line by minimizing the heterogeneity of the two areas
@@ -167,4 +167,5 @@ def surface_detection(filename, nb_frame, debug=False, adjust_pt1=0, adjust_pt2=
 
 
 if __name__ == '__main__':
-    surface_detection("../../Images/Valset/background/V1V3", 117, debug=True)
+    a, b = surface_detection("../../data/images/Valset/background/V2V4", 117, debug=True)
+    print(a, b)
