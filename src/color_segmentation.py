@@ -134,13 +134,18 @@ class ColorBB():
             cv.waitKey(1)
 
         # Adding median noises
-        img = cv.medianBlur(img_ini, 9)
+        #img = cv.medianBlur(img_ini, 5)
+        img = img_ini
 
         # Transformation of the colour mode of the image
         img_transform = cv.cvtColor(img, self.color_cvt)
 
         # Mask creation
         mask = cv.inRange(img_transform, self.lower, self.upper)
+
+        if debug:
+            cv.imshow('mask1', mask)
+            cv.waitKey(1)
 
         #kernel = np.ones((5, 5), np.uint8)
         #mask = cv.morphologyEx(mask, cv.MORPH_OPEN, kernel)
@@ -171,11 +176,13 @@ class ColorBB():
             polygon = np.array([pt1, pt2, pt3, pt4])
             mask = cv.fillPoly(mask, [polygon], 0)
 
-        if debug:
-            cv.imshow('mask', mask)
-            cv.waitKey(1)
+        # A pousser, choisir les meilleurs filtres
+        # kernel = np.ones((3, 3))
+        #  = cv.morphologyEx(mask, cv.MORPH_OPEN, kernel)
 
-        kernel = np.ones((5, 5), np.uint8)
+        if debug:
+            cv.imshow('mask2', mask)
+            cv.waitKey(1)
 
         # Find contours
         contours, hierarchy = cv.findContours(mask, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE)[-2:]
@@ -205,6 +212,8 @@ class ColorBB():
             cv.imshow('bounding box', img_ini)
             cv.waitKey(0)
             cv.destroyAllWindows()
+
+        time.sleep(0.1)
 
         return best_rectangle
 
