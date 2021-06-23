@@ -1,7 +1,8 @@
 from src.color_segmentation import ColorBB
-from src.metrics.model_performance import IoU_video
+from src.metrics.model_performance import IoU_video, IoU_video_kalman
 from src.random_forest import RandomForestBB
+
 
 Color = ColorBB("hsv")
 
-IoU_video("../data/images/Testset", "../data/annotations", Color, debug=True)
+IoU_video("../data/images/Valset", "../data/annotations", Color, debug=True, validation=True)

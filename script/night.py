@@ -1,18 +1,16 @@
 import numpy as np
 import pandas as pd
-from Code.ColorSegmentation import ColorBB
-from Code.Metrics.Validation import gridBuilding, gridSearchCV
-from Code.Metrics.ModelPerformance import IoU_video
+from src.color_segmentation import ColorBB
+from src.metrics.validation import gridBuilding, gridSearchCV
+from src.metrics.model_performance import IoU_video
 
 grid = []
 
-for k in range(70, 91, 10):
-    for i in range(140, 161, 10):
-        for j in range(70, 91, 10):
-            grid.append({'upper_yuv': [k, i, 255], 'lower_yuv': [0, 0, j]})
+for i in range(-30, 31, 10):
+    grid.append({'adjust_pt1': i, 'adjust_pt2': 30})
 
-Color = ColorBB("yuv", adjust_pt1=0, adjust_pt2=30)
+Color = ColorBB("hsv")
 
-df = gridSearchCV(Color, grid, "../Images/Valset", "../Annotations", verbose=True, autosave="yuvbound2.csv")
+df = gridSearchCV(Color, grid, "../data/images/Valset", "../data/annotations", verbose=True, autosave="newadjust2.csv")
 
-df.to_csv("../Data/yuvbound2.csv")
+df.to_csv("../data/dataframe/newadjust2.csv")
