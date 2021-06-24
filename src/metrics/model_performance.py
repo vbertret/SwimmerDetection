@@ -41,7 +41,7 @@ def IoU(box1, box2):
     return IoU_val
 
 
-def IoU_video(dir_name, dir_annot, model, threshold=0.5, choice=None, debug=False):
+def IoU_video(dir_name, dir_annot, model, threshold=0.5, choice=None, debug=False, validation=False):
     """
     Computation of the IoU for several videos
 
@@ -63,6 +63,8 @@ def IoU_video(dir_name, dir_annot, model, threshold=0.5, choice=None, debug=Fals
         the list of the videos of interest ( default is None )
     debug : boolean
         if true, the method displays each step ( default is False )
+    validation : boolean
+        if true, the method takes directly tyhe value of a and b already calculated
 
     Returns
     -------
@@ -109,7 +111,13 @@ def IoU_video(dir_name, dir_annot, model, threshold=0.5, choice=None, debug=Fals
 
         # If precised, the surface is detected
         if model.detect_surface:
-            a, b = surface_detection(f"{dir_name}/background/{data_videos[i][3]}", 117, adjust_pt1=model.adjust_pt1, adjust_pt2=model.adjust_pt2)
+            if validation:
+                if video_title == "V1" or video_title == "V3":
+                    a, b = 0.0328125, 200.0
+                else:
+                    a, b = 0.165625, 184.0
+            else:
+                a, b = surface_detection(f"{dir_name}/background/{data_videos[i][3]}", 117, adjust_pt1=model.adjust_pt1, adjust_pt2=model.adjust_pt2)
         else:
             a, b = 0, 0
 

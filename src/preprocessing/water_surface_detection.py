@@ -167,5 +167,5 @@ def surface_detection(filename, nb_frame, debug=False, adjust_pt1=0, adjust_pt2=
 
 
 if __name__ == '__main__':
-    a, b = surface_detection("../../data/images/Valset/background/V2V4", 117, debug=True)
+    a, b = surface_detection("../../data/images/Valset/background/V2V4", 117, debug=True, adjust_pt1=0, adjust_pt2=30)
     print(a, b)
