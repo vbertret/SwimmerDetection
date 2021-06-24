@@ -5,7 +5,9 @@ from skimage import io, transform
 from skimage.filters import roberts, sobel, scharr, prewitt
 from torchvision import transforms
 from torch.utils.data import Dataset
-
+import torch
+import os
+from src.annotations.read_annotation import read_annotation
 
 def createDataframe(img, bounding_box=[]):
     ########################################
@@ -161,8 +163,8 @@ class Rescale(object):
         # h and w are swapped for landmarks because for images,
         # x and y axes are axis 1 and 0 respectively
         bounding_box = np.array(
-            [int(bounding_box[0] * new_w / w), int(bounding_box[1] * new_h / h), int(bounding_box[2] * new_w / w),
-             int(bounding_box[3] * new_h / h)])
+            [bounding_box[0] / w, bounding_box[1] / h, bounding_box[2] / w,
+             bounding_box[3] / h])
 
         return {'image': img, 'bounding_box': bounding_box}
 
