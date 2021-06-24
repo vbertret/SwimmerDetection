@@ -9,6 +9,9 @@ __pycache__/
 #Py-Charm extension
 .idea/
 
+#Tensorboard
+runs/
+
 # Distribution / packaging
 .Python
 build/
