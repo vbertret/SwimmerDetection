@@ -3,6 +3,8 @@ import torch.nn as nn
 import torchvision
 from src.metrics.model_performance import IoU
 import numpy as np
+import matplotlib.pyplot as plt
+from torch.utils.tensorboard import SummaryWriter
 
 # All the different feature extractor available
 model_builder = {'resnet18'     : [lambda:torchvision.models.resnet18(pretrained=True), 150_528], #25_088
@@ -61,16 +63,21 @@ class Swimnet(nn.Module):
         return bbox
 
 
-def train(model, dataloader, criterion, optimizer, device):
+def train(model, dataloader, criterion, optimizer, device, tensorboard=(None, 0)):
     # Set the model to training mode. This will turn on layers that would
     # otherwise behave differently during evaluation, such as dropout.
     model.train()
 
     # Sum the Intersection over Union for every batch
-    iou = 0
+    iou_total = 0
+
+    # Configuration of tensorboard
+    if tensorboard[0] is not None:
+        writer_cop = tensorboard[0]
+        epoch = tensorboard[1]
 
     # Iterate over every batch of sequences.
-    for sample_batched in dataloader:
+    for num_batch, sample_batched in enumerate(dataloader):
 
         # Request a batch of images and bounding boxes, convert them into tensors
         # of the correct type, and then send them to the appropriate device.
@@ -82,7 +89,8 @@ def train(model, dataloader, criterion, optimizer, device):
 
         # Compute the value of the loss and the Intersection over Union for this batch
         loss = criterion(outputs, bbs)
-        iou += np.sum([IoU(outputs[i], bbs[i]).cpu().detach().item() for i in range(outputs.shape[0])])
+        iou = np.sum([IoU(outputs[i], bbs[i]).cpu().detach().item() for i in range(outputs.shape[0])])
+        iou_total += iou
 
         # Clear the gradient buffers of the optimized parameters.
         # Otherwise, gradients from the previous batch would be accumulated.
@@ -92,7 +100,11 @@ def train(model, dataloader, criterion, optimizer, device):
 
         optimizer.step()  # Step ⑤
 
-    return iou, loss.item()
+        if tensorboard[0] is not None and num_batch % 10 == 0:
+            writer_cop.add_scalar('training loss per batch', loss / dataloader.batch_size, epoch * np.ceil(len(dataloader.dataset))/dataloader.batch_size + num_batch)
+            writer_cop.add_scalar('training IoU per batch', iou / dataloader.batch_size, epoch * np.ceil(len(dataloader.dataset))/dataloader.batch_size + num_batch)
+
+    return iou_total, loss.item()
 
 
 def test(model, dataloader, criterion, device):
@@ -102,6 +114,7 @@ def test(model, dataloader, criterion, device):
 
     # Sum the Intersection over Union for every batch
     iou = 0
+    loss = 0
 
     # A context manager is used to disable gradient calculations during inference
     # to reduce memory usage, as we typically don't need the gradients at this point.
@@ -116,16 +129,17 @@ def test(model, dataloader, criterion, device):
             outputs = model(inputs)  # Step ①
 
             # Compute the value of the loss and the Intersection over Union for this batch
-            loss = criterion(outputs, bbs)
+            loss += criterion(outputs, bbs).cpu().detach().item()
             iou += np.sum([IoU(outputs[i], bbs[i]).cpu().detach().item() for i in range(outputs.shape[0])])
 
-    return iou, loss.item()
+    return iou, loss
 
 
-def train_and_test(model, train_dataloader, test_dataloader, criterion, optimizer, max_epochs, verbose=True):
+def train_and_test(model, train_dataloader, test_dataloader, criterion, optimizer, max_epochs, verbose=True, tensorboard=None):
 
     # Automatically determine the device that PyTorch should use for computation
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+    print(f"Device : {device}")
 
     # Move model to the device which will be used for train and test
     model.to(device)
@@ -134,18 +148,34 @@ def train_and_test(model, train_dataloader, test_dataloader, criterion, optimize
     history_train = {'loss': [], 'IoU': []}
     history_test = {'loss': [], 'IoU': []}
 
+    # Initialize the tensorboard
+    if tensorboard is not None:
+        writer = SummaryWriter(f'../data/runs/{tensorboard}')
+    else:
+        writer = None
+
     for epoch in range(max_epochs):
         # Run the training loop and calculate the IoU.
-        sum_iou, loss = train(model, train_dataloader, criterion, optimizer, device)
+        sum_iou, loss = train(model, train_dataloader, criterion, optimizer, device, tensorboard=[writer, epoch])
         iou = sum_iou / len(train_dataloader.dataset) * 100
+        loss = loss / train_dataloader.batch_size
         history_train['loss'].append(loss)
         history_train['IoU'].append(iou)
+
+        if tensorboard is not None:
+            writer.add_scalar('training loss per epoch', loss, epoch)
+            writer.add_scalar('training IoU per epoch', iou, epoch)
 
         # Do the same for the testing loop
         sum_iou, loss = test(model, test_dataloader, criterion, device)
         iou = sum_iou / len(test_dataloader.dataset) * 100
+        loss = loss / len(test_dataloader.dataset)
         history_test['loss'].append(loss)
         history_test['IoU'].append(iou)
+
+        if tensorboard is not None:
+            writer.add_scalar('test loss per epoch', loss, epoch)
+            writer.add_scalar('test IoU per epoch', iou, epoch)
 
         if verbose or epoch + 1 == max_epochs:
             print(f'[Epoch {epoch + 1}/{max_epochs}]'
@@ -161,6 +191,8 @@ def train_and_test(model, train_dataloader, test_dataloader, criterion, optimize
         ax.set_ylabel(metric, fontsize=12)
         ax.legend(['Train', 'Test'], loc='best')
     plt.show()
+
+    writer.close()
 
     return model
 
