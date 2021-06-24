@@ -5,4 +5,4 @@ from src.random_forest import RandomForestBB
 
 Color = ColorBB("hsv")
 
-IoU_video("../data/images/Valset", "../data/annotations", Color, debug=True, validation=True)
+IoU_video("../data/images/Valset", "../data/annotations", Color, debug=True, validation=True, use_kalman="max")

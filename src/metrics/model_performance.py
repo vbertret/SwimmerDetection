@@ -4,6 +4,7 @@ import time
 from src.preprocessing.bb_tools import union, intersection
 from src.preprocessing.water_surface_detection import surface_detection
 from src.annotations.read_annotation import read_annotation
+from src.kalman import KalmanFilter
 
 
 def IoU(box1, box2):
@@ -41,7 +42,7 @@ def IoU(box1, box2):
     return IoU_val
 
 
-def IoU_video(dir_name, dir_annot, model, threshold=0.5, choice=None, debug=False, validation=False):
+def IoU_video(dir_name, dir_annot, model, use_kalman=None, choice=None, debug=False, validation=False):
     """
     Computation of the IoU for several videos
 
@@ -57,14 +58,16 @@ def IoU_video(dir_name, dir_annot, model, threshold=0.5, choice=None, debug=Fals
         the name of the global directory of the annotations
     model : class with a predict function
         the model
-    threshold : float
-        the number use for the prediction of some models
+    use_kalman : str
+        if different of None, a kalman filter is fitted ( default is None )
+        The value can be "avg" or "max" if we want to use the exponentially weighted average or the maximum value
+        founded for h and w.
     choice : list
         the list of the videos of interest ( default is None )
     debug : boolean
         if true, the method displays each step ( default is False )
     validation : boolean
-        if true, the method takes directly tyhe value of a and b already calculated
+        if true, the method takes directly tyhe value of a and b already calculated ( default is False )
 
     Returns
     -------
@@ -126,6 +129,20 @@ def IoU_video(dir_name, dir_annot, model, threshold=0.5, choice=None, debug=Fals
         IoU_video = []
         no_box = 0
 
+        # Initialization of the value for the KalmanFilter
+        if use_kalman is not None:
+            found = False
+            middle_x = 0
+            middle_y = 0
+            t=1
+            if use_kalman == "avg":
+                beta = 0.95
+                S_w = 0
+                S_h = 0
+            elif use_kalman == "max":
+                max_h = 0
+                max_w = 0
+
         # Computation of the IoU for all the frames of the video
         for nb_filename in range(start, end):
 
@@ -148,6 +165,9 @@ def IoU_video(dir_name, dir_annot, model, threshold=0.5, choice=None, debug=Fals
             # Read the ground truth annotation
             BB_ground_truth = read_annotation(annot_name)
 
+            if use_kalman is not None and found:
+                middle_x, middle_y = kf.predict()
+
             if (debug):
                 img = cv.imread(file_name, cv.IMREAD_COLOR)
                 x_a, y_a, w_a, h_a = BB_ground_truth
@@ -155,23 +175,74 @@ def IoU_video(dir_name, dir_annot, model, threshold=0.5, choice=None, debug=Fals
 
             # If there is no bounded box found, the IoU is equal to O
             if BB == []:
-                IoU_video.append(0)
-                no_box += 1
+                if use_kalman is None or not found:
+                    IoU_video.append(0)
+                    no_box += 1
             # Otherwise, the method compute the IoU
             else:
+
+                x, y, w, h = BB
+
+                if use_kalman is None or not found:
+                    IoU_video.append(IoU(BB, BB_ground_truth))
+
+                if (use_kalman is None or not found) and IoU_video[-1] == 0:
+                    no_box += 1
+
+                if use_kalman is not None:
+                    # Incrementation of the nb of value for the exponentially weighted average
+                    t = t + 1
+
+                    # Update the max or the weighted average for h and w
+                    if use_kalman == "avg":
+                        S_h = beta * S_h + (1-beta) * h
+                        S_w = beta * S_w + (1-beta) * w
+                        S_h_adj = S_h / (1 - beta**t)
+                        S_w_adj = S_w / (1 - beta ** t)
+                    elif use_kalman == "max":
+                        max_h = max(max_h, h)
+                        max_w = max(max_w, w)
+
+                    # If a box is found, update the Kalman filter
+                    if found:
+                        middle_x, middle_y = kf.update([[x + w/2], [y + h/2]])
+
+
+                    # Initialize Kalman filter
+                    if not found:
+                        found = True
+                        x_ini = np.array([[x + w/2], [y + h/2], [0], [0]])
+                        kf = KalmanFilter(1/60, x_ini)
+
+                if debug:
+                    cv.rectangle(img, (x, y), (x + w, y + h), (0, 255, 0), 2)
+                    cv.putText(img, "Predicted BB", (x, y + h + 20), 0, 0.5, (0, 255, 0), 2)
+
+            if use_kalman is not None and middle_x !=0 and middle_y != 0:
+                if use_kalman == "avg":
+                    x = int(middle_x - S_w_adj/2)
+                    y = int(middle_y - S_h_adj/2)
+                    w = int(S_w_adj)
+                    h = int(S_h_adj)
+                elif use_kalman == "max":
+                    x = int(middle_x - max_w/2)
+                    y = int(middle_y - max_h/2)
+                    w = int(max_w)
+                    h = int(max_h)
+
+                BB = [x, y, w, h]
                 IoU_video.append(IoU(BB, BB_ground_truth))
 
                 if IoU_video[-1] == 0:
                     no_box += 1
 
                 if debug:
-                    x, y, w, h = BB
-                    cv.rectangle(img, (x, y), (x + w, y + h), (0, 255, 0), 2)
-                    cv.putText(img, "Predicted BB", (x, y + h + 20), 0, 0.5, (0, 255, 0), 2)
-                    cv.putText(img, "IoU : " + str(round(IoU_video[-1], 2)), (20, 40), 0, 1.5, (0, 0, 255), 2)
-                    cv.putText(img, "True BB", (x_a, y_a - 10), 0, 0.5, (255, 0, 0), 2)
+                    cv.rectangle(img, (x, y), (x + w, y + h), (0, 0, 255), 2)
+                    cv.putText(img, "Kalman Filter", (x, y + h + 20), 0, 0.5, (0, 0, 255), 2)
 
             if debug:
+                cv.putText(img, "IoU : " + str(round(IoU_video[-1], 2)), (20, 40), 0, 1.5, (0, 0, 255), 2)
+                cv.putText(img, "True BB", (x_a, y_a - 10), 0, 0.5, (255, 0, 0), 2)
                 cv.putText(img, "FPS : " + str(round(fps, 2)), (350, 40), 0, 1.5, (0, 255, 255), 2)
                 cv.imshow(f"Bounding box", img)
                 if cv.waitKey(2) & 0xFF == ord('q'):
