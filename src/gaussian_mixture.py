@@ -12,10 +12,10 @@ from src.preprocessing.bb_tools import union, intersection
 
 class GaussianMixtureBB():
 
-    def __init__(self, filename=None, margin=100, threshold=0.5,  detect_surface=True, adjust_pt1=15, adjust_pt2=15, use_time=True, graph_cut=True):
+    def __init__(self, filename=None, margin=100, threshold=0.5,  detect_surface=True, adjust_pt1=0, adjust_pt2=30, use_time=True, graph_cut=True):
 
         if filename is None:
-            self.model = GaussianMixture(n_components=2, covariance_type='diag')
+            self.model = GaussianMixture(n_components=2)
         else:
             self.model = pickle.load(open(filename, 'rb'))
 
@@ -63,7 +63,7 @@ class GaussianMixtureBB():
 
     def predict(self, filename_img, debug=False, a=0, b=0, precBB=[]):
         """
-        Prediction of the Random Forest
+        Prediction of the Gaussian Mixture
 
         This method makes the prediction of the bounding box for one image
 
@@ -103,13 +103,12 @@ class GaussianMixtureBB():
 
             img = img[y_prec:(y_prec + h_prec), x_prec:(x_prec + w_prec), :]
 
+            if len(precBB) != 0 and self.graph_cut:
+                self.dst = self.dst[y_prec:(y_prec + h_prec), x_prec:(x_prec + w_prec)]
+                self.dst = self.dst.reshape(-1)
+
         # Creation dataframe
         img2 = cv.cvtColor(img, cv.COLOR_BGR2HSV)
-
-        H, S, V = cv.split(img2)
-
-        std = np.sqrt(cv.blur(V ** 2, (3, 3)) - cv.blur(V, (3, 3)) ** 2)
-        std = std / np.max(std)
 
         img2 = img2.reshape(-1, 3)
 
@@ -117,17 +116,28 @@ class GaussianMixtureBB():
         df['ColourCode(H)'] = img2[:, 0]/255
         df['ColourCode(S)'] = img2[:, 1]/255
         df['ColourCode(V)'] = img2[:, 2]/255
-        #df['Standard Deviation'] = std.reshape(-1)
 
         # Compute prediction
         prediction_gm = self.model.predict_proba(df)
 
-        mask_light = (df['ColourCode(V)'].values < 240/255) * 1
+        if len(precBB) != 0 and self.graph_cut:
+            temp1 = prediction_gm[:, 1] / self.dst
+            temp2 = prediction_gm[:, 0] * self.dst
+            prediction_gm[:, 1] = temp1 / (temp1 + temp2)
+            prediction_gm[:, 0] = temp2 / (temp1 + temp2)
 
-        prediction_gm[:, 0] = prediction_gm[:, 0] * mask_light
-        prediction_gm[mask_light == 0, 1] = 1
+        if len(precBB) != 0:
+            mask_light = np.uint8((df['ColourCode(V)'].values < 250/255) * 255).reshape((w_prec, h_prec))
+        else:
+            mask_light = np.uint8((df['ColourCode(V)'].values < 250 / 255) * 255).reshape((480, 640))
 
-        score_img = prediction_gm[:, 0]
+        kernel = (2, 2)
+        mask_light = cv.morphologyEx(mask_light, cv.MORPH_CLOSE, kernel).reshape(-1)/255
+
+        prediction_gm[mask_light == 0, 1] = 0
+        prediction_gm[mask_light == 0, 0] = 1
+
+        score_img = prediction_gm[:, 1]
 
         # Building the mask
         if len(precBB)!=0:
@@ -138,17 +148,18 @@ class GaussianMixtureBB():
         if self.graph_cut:
 
             if len(precBB)!=0:
-                labels0 = prediction_gm[:, 1].reshape((h_prec, w_prec))
-                labels1 = prediction_gm[:, 0].reshape((h_prec, w_prec))
+                labels0 = prediction_gm[:, 0].reshape((h_prec, w_prec))
+                labels1 = prediction_gm[:, 1].reshape((h_prec, w_prec))
             else:
-                labels0 = prediction_gm[:, 1].reshape((480, 640))
-                labels1 = prediction_gm[:, 0].reshape((480, 640))
+                labels0 = prediction_gm[:, 0].reshape((480, 640))
+                labels1 = prediction_gm[:, 1].reshape((480, 640))
 
-            mask = graph_cut(labels0, labels1)
-
+            mask, self.dst = graph_cut(labels0, labels1)
         else:
             mask = np.array((score_img > self.threshold) * 255, dtype=np.uint8)
 
+
+        #Texture/Non Texture segmentation
         if a!=0 and b!=0:
 
             if len(precBB)!=0:
@@ -201,11 +212,11 @@ class GaussianMixtureBB():
         if debug:
             cv.imshow('bounding box', img)
             cv.waitKey(0)
-            #cv.destroyAllWindows()
+            cv.destroyAllWindows()
 
         return best_rectangle
 
-    def train(self, dir_name, choice=None, validation=True):
+    def train(self, dir_name, choice=None):
 
         # Reading the info.txt file
         f = open(f"{dir_name}/info.txt")
@@ -236,59 +247,45 @@ class GaussianMixtureBB():
 
             print(f"Video Treated : {video_title}...")
 
-            # If precised, the surface is detected
-            if self.detect_surface:
-                if validation:
-                    if video_title == "V1" or video_title == "V3":
-                        a, b = 0.0328125, 200.0
-                    else:
-                        a, b = 0.165625, 184.0
-                else:
-                    a, b = surface_detection(f"{dir_name}/background/{data_videos[i][3]}", 117,
-                                             adjust_pt1=self.adjust_pt1, adjust_pt2=self.adjust_pt2)
-            else:
-                a, b = 0, 0
-
             # Computation of the rows for all the frames of the video
-            for nb_filename in range(start, end, 3):
+            for nb_filename in range(start, end, 4):
 
                 file_name = dir_name + "/" + str(video_title) + str(nb_filename).zfill(5) + ".jpg"
                 img = cv.imread(file_name)
 
                 img2 = cv.cvtColor(img, cv.COLOR_BGR2HSV)
 
-                H, S, V = cv.split(img2)
-
-                std = np.sqrt(cv.blur(V ** 2, (3, 3)) - cv.blur(V, (3, 3)) ** 2)
-                std = std/np.max(std)
-
                 img2 = img2.reshape(-1, 3)
 
                 df2 = pd.DataFrame()
-                df2['ColourCode(H)'] = img2[:, 0] / 255
-                df2['ColourCode(S)'] = img2[:, 1] / 255
-                df2['ColourCode(V)'] = img2[:, 2] / 255
-                #df2['Standard Deviation'] = std.reshape(-1)
+                df2['ColourCode(H)'] = img2[valid, 0] / 255
+                df2['ColourCode(S)'] = img2[valid, 1] / 255
+                df2['ColourCode(V)'] = img2[valid, 2] / 255
 
                 df = pd.concat([df, df2], axis=0)
 
-        #Fit the model
+        # Fit the model
         self.model.fit(df)
 
 
 def graph_cut(labels0, labels1):
 
+    # Initialization of the graph
     g = maxflow.Graph[float]()
 
+    # Retrieval of the shape of the picture
     img_shape = labels0.shape
 
+    # Add a node for each pixel
     nodeids = g.add_grid_nodes(img_shape)
 
+    # Parameters for the anisotropic Ising model
     beta1 = 1.7638
     beta2 = 0.2452
     beta3 = 0.1231
     beta4 = 0.1288
-    # x axis
+
+    # Add vertexes between neighboorhood pixels
     structure = 2 * np.array([[0, 0, 0],
                               [0, 0, beta1],
                               [beta3, beta2, beta4]])
@@ -296,19 +293,23 @@ def graph_cut(labels0, labels1):
 
     g.add_grid_edges(nodeids, weights, structure, symmetric=True)
 
+    # Add vertexes between each node and the background and foreground node
     prob = labels1 > 0.5
     eps = 10 ** (-10)
     weights = np.log(labels1 + eps) - np.log(labels0 + eps)
 
     g.add_grid_tedges(nodeids, -(1-prob)*weights, prob*weights)
 
+    # Computation of the flow
     flow = g.maxflow()
 
-    #print("Maximum flow:", flow)
-
+    # Min/Max cup
     mask = np.uint8(g.get_grid_segments(nodeids) * 255)
 
-    return mask
+    # Computation of the geodesic distance between all the pixels and the mask
+    dst = cv.distanceTransform(255 - mask, cv.DIST_L1, 3, dstType = cv.CV_8U)
+
+    return mask, dst
 
 
 
