@@ -87,6 +87,7 @@ class GaussianMixtureBB():
         """
         # Loading image
         img = cv.imread(filename_img, cv.IMREAD_COLOR)
+        coord = [0, 0, 640, 480]
 
         if debug:
             cv.imshow("image", img)
@@ -103,9 +104,11 @@ class GaussianMixtureBB():
 
             img = img[y_prec:(y_prec + h_prec), x_prec:(x_prec + w_prec), :]
 
-            if len(precBB) != 0 and self.graph_cut:
-                self.dst = self.dst[y_prec:(y_prec + h_prec), x_prec:(x_prec + w_prec)]
-                self.dst = self.dst.reshape(-1)
+            coord = [x_prec, y_prec, w_prec, h_prec]
+
+        if len(precBB) != 0 and self.graph_cut:
+            self.dst = self.dst[y_prec:(y_prec + h_prec), x_prec:(x_prec + w_prec)]
+            self.dst = self.dst.reshape(-1)
 
         # Creation dataframe
         img2 = cv.cvtColor(img, cv.COLOR_BGR2HSV)
@@ -120,22 +123,22 @@ class GaussianMixtureBB():
         # Compute prediction
         prediction_gm = self.model.predict_proba(df)
 
-        if len(precBB) != 0 and self.graph_cut:
-            temp1 = prediction_gm[:, 1] / self.dst
-            temp2 = prediction_gm[:, 0] * self.dst
-            prediction_gm[:, 1] = temp1 / (temp1 + temp2)
-            prediction_gm[:, 0] = temp2 / (temp1 + temp2)
-
         if len(precBB) != 0:
-            mask_light = np.uint8((df['ColourCode(V)'].values < 250/255) * 255).reshape((w_prec, h_prec))
+            mask_light = np.uint8((df['ColourCode(V)'].values < 250/255) * 255).reshape((h_prec, w_prec))
         else:
-            mask_light = np.uint8((df['ColourCode(V)'].values < 250 / 255) * 255).reshape((480, 640))
+            mask_light = np.uint8((df['ColourCode(V)'].values < 250/255) * 255).reshape((480, 640))
 
         kernel = (2, 2)
         mask_light = cv.morphologyEx(mask_light, cv.MORPH_CLOSE, kernel).reshape(-1)/255
 
         prediction_gm[mask_light == 0, 1] = 0
         prediction_gm[mask_light == 0, 0] = 1
+
+        if len(precBB) != 0 and self.graph_cut:
+            temp1 = prediction_gm[:, 1] / self.dst
+            temp2 = prediction_gm[:, 0] * self.dst
+            prediction_gm[:, 1] = temp1 / (temp1 + temp2)
+            prediction_gm[:, 0] = temp2 / (temp1 + temp2)
 
         score_img = prediction_gm[:, 1]
 
@@ -154,7 +157,7 @@ class GaussianMixtureBB():
                 labels0 = prediction_gm[:, 0].reshape((480, 640))
                 labels1 = prediction_gm[:, 1].reshape((480, 640))
 
-            mask, self.dst = graph_cut(labels0, labels1)
+            mask, self.dst = graph_cut(labels0, labels1, coord)
         else:
             mask = np.array((score_img > self.threshold) * 255, dtype=np.uint8)
 
@@ -268,7 +271,7 @@ class GaussianMixtureBB():
         self.model.fit(df)
 
 
-def graph_cut(labels0, labels1):
+def graph_cut(labels0, labels1, coord):
 
     # Initialization of the graph
     g = maxflow.Graph[float]()
@@ -307,7 +310,14 @@ def graph_cut(labels0, labels1):
     mask = np.uint8(g.get_grid_segments(nodeids) * 255)
 
     # Computation of the geodesic distance between all the pixels and the mask
-    dst = cv.distanceTransform(255 - mask, cv.DIST_L1, 3, dstType = cv.CV_8U)
+    mask2 = np.zeros((480, 640), dtype=np.uint8)
+    x_prec, y_prec, w_prec, h_prec = coord
+    mask2[y_prec:(y_prec + h_prec), x_prec:(x_prec + w_prec)] = mask
+    dst = cv.distanceTransform(255 - mask2, cv.DIST_L1, 3, dstType = cv.CV_32F)/600 + 0.1
+
+    # Amplification of the distance
+    dst[dst < 0.3] = dst[dst < 0.3]*0.1
+    dst[dst >= 0.3] = dst[dst >= 0.3]*100
 
     return mask, dst
 
