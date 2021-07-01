@@ -42,6 +42,219 @@ def IoU(box1, box2):
     return IoU_val
 
 
+def IsoU(box1, box2):
+    """
+    Intersection square over Union
+
+    Compute the Intersection square over Union of the two boxes
+
+    Parameters
+    -----------
+    box1: (x1, y1, w1, h1) tuple
+        parameters of the first rectangle box1
+    box2: (x2, y2, w2, h2) tuple
+        parameters of the second rectangle box2
+
+    Returns
+    -------
+    IsoU_val : float
+        Intersection  square over Union
+    """
+
+    # Computation of the areas of box1 and box2
+    area_box1 = box1[2] * box1[3]
+    area_box2 = box2[2] * box2[3]
+
+    # Construction of the intersection between box1 and box2
+    intersection_box = intersection(box1, box2)
+
+    # Computation of the area of the intersection
+    area_intersection = intersection_box[2] * intersection_box[3]
+
+    # Computation of the Intersection over Union
+    IsoU_val = area_intersection ** 2 / np.sqrt((area_box1 + area_box2 - area_intersection))
+
+    return IsoU_val
+
+
+def accuracy(box1, box2):
+    """
+    Accuracy
+
+    Compute the percentage of well classified pixels according to the 2 boxes
+
+    Parameters
+    -----------
+    box1: (x1, y1, w1, h1) tuple
+        parameters of the first rectangle box1
+    box2: (x2, y2, w2, h2) tuple
+        parameters of the second rectangle box2
+
+    Returns
+    -------
+    acc : float
+        Accuracy
+    """
+    if len(box1) != 0 and len(box2) != 0:
+        # Convert the coordinates into integer if there are floats
+        box1 = np.array(box1, dtype=np.int64)
+        box2 = np.array(box2, dtype=np.int64)
+
+        # Compute the areas of the box2 and box1
+        area1 = box1[2] * box1[3]
+        area2 = box2[2] * box2[3]
+
+        # Compute the number of well predicted foreground pixels
+        inter = intersection(box1, box2)
+        area_inter = inter[2]*inter[3]
+
+        # Compute the accuracy
+        acc = 480*640 - (area1 - area_inter) - (area2 - area_inter)
+    else:
+        if len(box1) != 0:
+            # Convert the coordinates into integer if there are floats
+            box1 = np.array(box1, dtype=np.uint64)
+
+            # Compute the areas of the box1
+            area1 = box1[2] * box1[3]
+
+            acc = 480*640 - area1
+        else:
+            # Convert the coordinates into integer if there are floats
+            box2 = np.array(box2, dtype=np.uint64)
+
+            # Compute the areas of the box2
+            area2 = box2[2] * box2[3]
+
+            acc = 480 * 640 - area2
+
+    return acc/(640*480)
+
+
+def precision(box1, box2):
+    """
+    Precision
+
+    Compute the precision of the prediction. The first box is the ground-truth
+    and the second box is the predicted.
+
+    Parameters
+    -----------
+    box1: (x1, y1, w1, h1) tuple
+        parameters of the ground-truth box1
+    box2: (x2, y2, w2, h2) tuple
+        parameters of the predicted box2
+
+    Returns
+    -------
+    prec : float
+        Precision
+    """
+    if len(box2) != 0:
+        # Convert the coordinates into integer if there are floats
+        box1 = np.array(box1, dtype=np.int64)
+        box2 = np.array(box2, dtype=np.int64)
+
+        # Compute the areas of the box2 and box1
+        area2 = box2[2] * box2[3]
+
+        # Compute the number of well predicted foreground pixels
+        inter = intersection(box1, box2)
+
+        if inter[2] == 0 and inter[3] == 0:
+            prec = 0
+        else:
+            TP = inter[2]*inter[3] # True positives
+
+            # Compute the precision
+            FP = area2 - TP
+            prec = TP/(FP+TP)
+    else:
+        prec = 0
+
+    return prec
+
+
+def recall(box1, box2):
+    """
+    Recall
+
+    Compute the recall of the prediction. The first box is the ground-truth
+    and the second box is the predicted.
+
+    Parameters
+    -----------
+    box1: (x1, y1, w1, h1) tuple
+        parameters of the ground-truth box1
+    box2: (x2, y2, w2, h2) tuple
+        parameters of the predicted box2
+
+    Returns
+    -------
+    rec : float
+        Precision
+    """
+    if len(box2) != 0:
+        # Convert the coordinates into integer if there are floats
+        box1 = np.array(box1, dtype=np.int64)
+        box2 = np.array(box2, dtype=np.int64)
+
+        # Compute the areas of the box2 and box1
+        area1 = box1[2] * box1[3]
+
+        # Compute the number of well predicted foreground pixels
+        inter = intersection(box1, box2)
+
+        if inter[2] == 0 and inter[3] == 0:
+            rec = 0
+        else:
+            TP = inter[2]*inter[3] # True positives
+
+            # Compute the precision
+            FN = area1 - TP
+            rec = TP/(FN+TP)
+    else:
+        rec = 0
+
+    return rec
+
+
+def f1_score(box1, box2):
+    """
+    F1-Score
+
+    Compute the f1-score of the prediction. The first box is the ground-truth
+    and the second box is the predicted.
+
+    Parameters
+    -----------
+    box1: (x1, y1, w1, h1) tuple
+        parameters of the ground-truth box1
+    box2: (x2, y2, w2, h2) tuple
+        parameters of the predicted box2
+
+    Returns
+    -------
+    f1 : float
+        Precision
+    """
+    if len(box2) != 0:
+        # Compute the precision and the recall
+        prec = precision(box1, box2)
+        rec = recall(box1, box2)
+
+        # Compute the f1-score
+        if rec != 0 and prec != 0:
+            f1 = 2*(prec*rec)/(prec+rec)
+        else:
+            f1 = 0
+
+    else:
+        f1 = 0
+
+    return f1
+
+
 def IoU_video(dir_name, dir_annot, model, use_kalman=None, choice=None, debug=False, validation=False):
     """
     Computation of the IoU for several videos
@@ -148,6 +361,7 @@ def IoU_video(dir_name, dir_annot, model, use_kalman=None, choice=None, debug=Fa
 
             # Declaration of the filename of the frames which is being treated
             file_name = dir_name + "/" + str(video_title) + str(nb_filename).zfill(5) + ".jpg"
+            img = cv.imread(file_name)
 
             # Declaration of the filename of the annotations which is being treated
             annot_name = dir_annot + "/" + dir_name.split("/")[-1] + "/" + str(video_title) + str(nb_filename).zfill(5) + ".json"
@@ -217,6 +431,7 @@ def IoU_video(dir_name, dir_annot, model, use_kalman=None, choice=None, debug=Fa
                 if debug:
                     cv.rectangle(img, (x, y), (x + w, y + h), (0, 255, 0), 2)
                     cv.putText(img, "Predicted BB", (x, y + h + 20), 0, 0.5, (0, 255, 0), 2)
+                    cv.putText(img, "IsoU : " + str(round(IsoU(BB, BB_ground_truth), 2)), (10, 450), 0, 1.5, (0, 0, 255), 2)
 
             if use_kalman is not None and middle_x !=0 and middle_y != 0:
                 if use_kalman == "avg":
@@ -241,9 +456,10 @@ def IoU_video(dir_name, dir_annot, model, use_kalman=None, choice=None, debug=Fa
                     cv.putText(img, "Kalman Filter", (x, y + h + 20), 0, 0.5, (0, 0, 255), 2)
 
             if debug:
-                cv.putText(img, "IoU : " + str(round(IoU_video[-1], 2)), (20, 40), 0, 1.5, (0, 0, 255), 2)
+                cv.putText(img, "IoU : " + str(round(IoU_video[-1], 2)), (10, 40), 0, 1.5, (0, 0, 255), 2)
                 cv.putText(img, "True BB", (x_a, y_a - 10), 0, 0.5, (255, 0, 0), 2)
                 cv.putText(img, "FPS : " + str(round(fps, 2)), (350, 40), 0, 1.5, (0, 255, 255), 2)
+                cv.putText(img, "F1-Score : " + str(round(f1_score(BB_ground_truth, BB), 2)), (10, 100), 0, 1.5, (51, 153, 255), 2)
                 cv.imshow(f"Bounding box", img)
                 if cv.waitKey(2) & 0xFF == ord('q'):
                     quit = True

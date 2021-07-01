@@ -26,7 +26,6 @@ def intersection(box1, box2):
     y_inter = max(box1[1], box2[1])
     w_inter = min(box1[0] + box1[2], box2[0] + box2[2]) - x_inter
     h_inter = min(box1[1] + box1[3], box2[1] + box2[3]) - y_inter
-
     # If there is no intersection, it returns an empty tuple
     if w_inter < 0 or h_inter < 0:
         return 0, 0, 0, 0
