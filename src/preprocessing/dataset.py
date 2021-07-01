@@ -158,7 +158,7 @@ class Rescale(object):
 
         new_h, new_w = int(new_h), int(new_w)
 
-        img = transform.resize(image, (new_h, new_w))
+        img = transform.resize(image, (new_h, new_w), preserve_range=True)/255
 
         # h and w are swapped for landmarks because for images,
         # x and y axes are axis 1 and 0 respectively
@@ -217,6 +217,7 @@ class SwimmerDataset(Dataset):
         ant_name = self.ant_dir + "/" + filenames[idx].split("/")[-1].split(".jpg")[0] + ".json"
 
         bounding_box = read_annotation(ant_name)
+        bounding_box = [bounding_box[0], bounding_box[1], bounding_box[0] + bounding_box[2], bounding_box[1] + bounding_box[3]]
 
         sample = {'image': image, 'bounding_box': np.array(bounding_box)}
 

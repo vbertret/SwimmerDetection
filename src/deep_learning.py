@@ -1,18 +1,26 @@
 import torch
+from skimage import io
 import torch.nn as nn
 import torchvision
 from src.metrics.model_performance import IoU
 import numpy as np
 import matplotlib.pyplot as plt
 from torch.utils.tensorboard import SummaryWriter
+import cv2.cv2 as cv
+from torchvision import transforms
+from src.preprocessing.dataset import Rescale, ToTensor, Normalize, SwimmerDataset
 
 # All the different feature extractor available
-model_builder = {'resnet18'     : [lambda:torchvision.models.resnet18(pretrained=True), 150_528], #25_088
+model_builder = {'resnet18'     : [lambda:torchvision.models.resnet18(pretrained=True), 512],
                  'resnet34'     : [lambda:torchvision.models.resnet34(pretrained=True), 25_088],
-                 'resnet50'     : [lambda:torchvision.models.resnet50(pretrained=True), 100_352],
+                 'resnet50'     : [lambda:torchvision.models.resnet50(pretrained=True), 2048],
                  'resnet152'    : [lambda:torchvision.models.resnet152(pretrained=True), 100_352],
                  'densenet121'  : [lambda:torchvision.models.densenet121(pretrained=True), 50_176],
-                 'squeezenet1_1': [lambda:torchvision.models.squeezenet1_1(pretrained=True), 86_528]}
+                 'squeezenet1_1': [lambda:torchvision.models.squeezenet1_1(pretrained=True), 86_528],
+                 'mobilenet-v3-large': [lambda:torchvision.models.mobilenet_v3_large(pretrained=True), 960],
+                 'mobilenet-v3-small': [lambda:torchvision.models.mobilenet_v3_small(pretrained=True), 576],
+                 'efficientnet' : [None, 2]}
+
 
 
 class FeatureExtractor(nn.Module):
@@ -26,13 +34,15 @@ class FeatureExtractor(nn.Module):
 
         # Freeze the network. We don't want to update this part of the model
         for param in model.parameters():
-            param.requires_grad = False
+            param.requires_grad = True
 
         # We keep only the feature maps of all the models
         if 'resnet' in model_name:
-            self.body = nn.Sequential(*list(model.children())[:-2])
+            self.body = nn.Sequential(*list(model.children())[:-1])
         elif 'densenet' in model_name or 'squeezenet' in model_name:
             self.body = model.features
+        elif 'mobilenet' in model_name:
+            self.body = nn.Sequential(*list(model.children())[:-1])
 
     def forward(self, x):
         return self.body(x)
@@ -47,18 +57,52 @@ class Swimnet(nn.Module):
         self.feature_extractor = FeatureExtractor(feature_extractor_name)
 
         # Initialize the head bbox
+        """
+        self.head = nn.Sequential(
+                                       nn.Linear(self.feature_extractor.num_features, 1024), nn.ReLU(),
+                                       nn.BatchNorm1d(1024),
+                                       nn.Linear(1024, 256), nn.ReLU(),
+                                       nn.BatchNorm1d(256),
+                                       nn.Linear(256, 64), nn.ReLU(),
+                                       nn.BatchNorm1d(64),
+                                       nn.Linear(64, 4), nn.Sigmoid())
+        """ # before, only one layer with 1024 neurons
         self.head = nn.Sequential(nn.Dropout(),
-                                       nn.Linear(self.feature_extractor.num_features, 128), nn.ReLU(),
-                                       nn.BatchNorm1d(128),
-                                       nn.Dropout(),
-                                       nn.Linear(128, 4), nn.Sigmoid())
+                                  nn.Linear(self.feature_extractor.num_features, 1024), nn.ReLU(),
+                                  nn.BatchNorm1d(1024),
+                                  nn.Dropout(),
+                                  nn.Linear(1024, 4), nn.Sigmoid())
 
+        self.detect_surface = False
+        self.use_time = False
     def forward(self, x):
 
         # Flatten the inputs
-        features = x.view(x.size()[0], -1)
-
+        features = self.feature_extractor(x)
+        features = features.view(features.size()[0], -1)
         bbox = self.head(features)
+
+        return bbox
+
+    def predict(self, file_name, a=0, b=0, precBB=[]):
+
+        input_size = 224
+        transformations = transforms.Compose([
+            Rescale((input_size, input_size)),
+            ToTensor(),
+            Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+        ])
+
+        img = io.imread(file_name)
+        sample = {'image': img, 'bounding_box': np.array([0, 0, 0, 0])}
+        sample = transformations(sample)
+        x = sample['image']
+        x = torch.unsqueeze(x, 0).float()
+
+        self.eval()
+        bbox = self.forward(x)[0].detach().numpy()
+        bbox = [int(bbox[0]*640), int(bbox[1]*480), int((bbox[2] - bbox[0])*640), int((bbox[3] - bbox[1])*480)]
+
 
         return bbox
 
@@ -89,7 +133,8 @@ def train(model, dataloader, criterion, optimizer, device, tensorboard=(None, 0)
 
         # Compute the value of the loss and the Intersection over Union for this batch
         loss = criterion(outputs, bbs)
-        iou = np.sum([IoU(outputs[i], bbs[i]).cpu().detach().item() for i in range(outputs.shape[0])])
+        iou = np.sum([IoU([outputs[i][0], outputs[i][1], outputs[i][2] - outputs[i][0], outputs[i][3] - outputs[i][1]],
+                          [bbs[i][0], bbs[i][1], bbs[i][2] - bbs[i][0], bbs[i][3] - bbs[i][1]]).cpu().detach().item() for i in range(outputs.shape[0])])
         iou_total += iou
 
         # Clear the gradient buffers of the optimized parameters.
@@ -130,7 +175,8 @@ def test(model, dataloader, criterion, device):
 
             # Compute the value of the loss and the Intersection over Union for this batch
             loss += criterion(outputs, bbs).cpu().detach().item()
-            iou += np.sum([IoU(outputs[i], bbs[i]).cpu().detach().item() for i in range(outputs.shape[0])])
+            iou += np.sum([IoU([outputs[i][0], outputs[i][1], outputs[i][2] - outputs[i][0], outputs[i][3] - outputs[i][1]],
+                          [bbs[i][0], bbs[i][1], bbs[i][2] - bbs[i][0], bbs[i][3] - bbs[i][1]]).cpu().detach().item() for i in range(outputs.shape[0])])
 
     return iou, loss
 
@@ -182,6 +228,10 @@ def train_and_test(model, train_dataloader, test_dataloader, criterion, optimize
                   f" loss: {history_train['loss'][-1]:.4f}, IoU: {history_train['IoU'][-1]:2.2f}%"
                   f" - test_loss: {history_test['loss'][-1]:.4f}, test_IoU: {history_test['IoU'][-1]:2.2f}%")
 
+            writer.add_figure(f'predictions vs. actuals, epoch : {epoch}',
+                              plot_bouding_box(model, train_dataloader, device),
+                              global_step=epoch)
+
     # Generate diagnostic plots for the loss and accuracy
     fig, axes = plt.subplots(ncols=2, figsize=(9, 4.5))
     for ax, metric in zip(axes, ['loss', 'IoU']):
@@ -197,8 +247,59 @@ def train_and_test(model, train_dataloader, test_dataloader, criterion, optimize
     return model
 
 
+def plot_bouding_box(model, dataloader, device):
 
+    batch_sample = next(iter(dataloader))
+    batch_img = batch_sample['image']
+    batch_bbox = batch_sample['bounding_box']
 
+    with torch.no_grad():
+        inputs = batch_img.float().to(device)
+        pred_bb = model(inputs).cpu()
+
+    mean_nm = [0.485, 0.456, 0.406]
+    std_nm = [0.229, 0.224, 0.225]
+
+    fig = plt.figure(figsize=(48, 12))
+    for idx in np.arange(4):
+        ax = fig.add_subplot(1, 4, idx + 1, xticks=[], yticks=[])
+
+        img2 = batch_img[idx].cpu().numpy()
+        b, h, w = img2.shape
+        img2 = np.transpose(img2, (1, 2, 0))
+
+        img2[:, :, 0] = (img2[:, :, 0]*std_nm[0] + mean_nm[0])*255
+        img2[:, :, 1] = (img2[:, :, 1]*std_nm[1] + mean_nm[1])*255
+        img2[:, :, 2] = (img2[:, :, 2]*std_nm[2] + mean_nm[2])*255
+        img2 = img = np.ascontiguousarray(img2, dtype=np.uint8)
+
+        x1_gt, y1_gt, x2_gt, y2_gt = batch_bbox[idx].cpu().numpy()
+        x1_gt = int(x1_gt * w)
+        y1_gt = int(y1_gt * h)
+        x2_gt = int(x2_gt * w)
+        y2_gt = int(y2_gt * h)
+
+        cv.rectangle(img2, (x1_gt, y1_gt), (x2_gt, y2_gt), (255, 0, 0), 2)
+        cv.putText(img2, "True BB", (x1_gt, y1_gt - 10), 0, 0.5, (255, 0, 0), 2)
+
+        x1_pred, y1_pred, x2_pred, y2_pred = pred_bb[idx].cpu().numpy()
+        x1_pred = int(x1_pred * w)
+        y1_pred = int(y1_pred * h)
+        x2_pred = int(x2_pred * w)
+        y2_pred = int(y2_pred * h)
+
+        gt = (x1_gt, y1_gt, x2_gt - x1_gt, y2_gt - y1_gt)
+        pred = (x1_pred, y1_pred, x2_pred - x1_pred, y2_pred - y1_pred)
+        iou = IoU(gt, pred)*100
+        cv.putText(img2, f"IoU : {iou}", (10, 15), 0, 0.5, (255, 255, 0), 2)
+
+        cv.rectangle(img2, (x1_pred, y1_pred), (x2_pred, y2_pred), (0, 0, 255), 2)
+        cv.putText(img2, "Predicted BB", (x1_pred, y2_pred + 20), 0, 0.5, (0, 0, 255), 2)
+        #cv.putText(img2, f"x1 : {x1_pred}, y1 : {y1_pred}", (10, 215), 0, 0.5, (0, 255, 0), 2)
+        #cv.putText(img2, f"x2 : {x2_pred}, y2 : {y2_pred}", (10, 190), 0, 0.5, (0, 255, 0), 2)
+        ax.imshow(img2)
+
+    return fig
 
 
 
