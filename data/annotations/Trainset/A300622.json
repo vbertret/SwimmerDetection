@@ -1,0 +1,26 @@
+{
+ "task_name": "TRAINSET",
+ "annotations": [
+  {
+   "id": "0.fuc92ezjfw",
+   "geometry": {
+    "vertices": [
+     0.6265625,
+     0.46875,
+     0.865625,
+     0.6145833333333334
+    ],
+    "type": "rectangle"
+   },
+   "category": "swimmer",
+   "options": {
+    "isBlue": false
+   }
+  }
+ ],
+ "data": {
+  "type": "image",
+  "children": "",
+  "path": "Images/Trainset/A300622.jpg"
+ }
+}
