@@ -8,6 +8,7 @@ from torch.utils.data import Dataset
 import torch
 import os
 from src.annotations.read_annotation import read_annotation
+from torch.utils.data import DataLoader
 
 def createDataframe(img, bounding_box=[]):
     ########################################
@@ -121,7 +122,7 @@ class Normalize(object):
     def __init__(self, mean, std):
         assert isinstance(mean, (list, tuple))
         assert isinstance(std, (list, tuple))
-        self.mean = mean
+        self.mean = mean # utiliser moyenne
         self.std = std
 
     def __call__(self, sample):
@@ -184,8 +185,7 @@ class SwimmerDataset(Dataset):
         self.img_dir = img_dir
         self.transform = transform
 
-    def __len__(self):
-
+        # Read the length of the dataset
         # Initialization of the number of frames
         nb_frames = 0
 
@@ -202,7 +202,11 @@ class SwimmerDataset(Dataset):
         for video in data_videos:
             nb_frames += video[2] - video[1]
 
-        return nb_frames
+        self.length = nb_frames
+
+    def __len__(self):
+
+        return self.length
 
     def __getitem__(self, idx):
         if torch.is_tensor(idx):
@@ -221,7 +225,24 @@ class SwimmerDataset(Dataset):
 
         sample = {'image': image, 'bounding_box': np.array(bounding_box)}
 
-        if self.transform:
+        if self.transform is not None:
             sample = self.transform(sample)
 
         return sample
+
+
+def get_mean_std(dataset):
+    loader = DataLoader(dataset, batch_size=len(dataset), shuffle=True, num_workers=5)
+
+    channels_sum, channels_squares_sum, num_batches = 0, 0, 0
+
+    for sample in loader:
+        data = sample['image']
+        channels_sum += torch.mean(data, dim=[0, 2, 3])
+        channels_squares_sum += torch.mean(data ** 2, dim=[0, 2, 3])
+        num_batches += 1
+
+    mean = channels_sum/num_batches
+    std = (channels_squares_sum/num_batches - mean**2/num_batches)**0.5
+
+    return mean.numpy().tolist(), std.numpy().tolist()
