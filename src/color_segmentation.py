@@ -213,7 +213,5 @@ class ColorBB():
             cv.waitKey(0)
             cv.destroyAllWindows()
 
-        time.sleep(0.05)
-
         return best_rectangle
 
