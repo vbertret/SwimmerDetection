@@ -7,7 +7,7 @@ from src.preprocessing.water_surface_detection import surface_detection
 
 class ColorBB():
 
-    def __init__(self, color_space="hsv", lower_hsv=(0, 0, 0), upper_hsv=(179, 235, 120), lower_yuv=(0, 0, 70),
+    def __init__(self, color_space="hsv", lower_hsv=(0, 0, 0), upper_hsv=(179, 235, 110), lower_yuv=(0, 0, 70),
                  upper_yuv=(90, 150, 255), margin=100, detect_surface=True, adjust_pt1=0, adjust_pt2=30, use_time=True):
         """
         Parameters
