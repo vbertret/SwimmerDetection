@@ -32,7 +32,7 @@ def gridSearchCV(model, grid, dir_name, dir_annot, verbose=False, autosave=""):
         if verbose:
             print(params)
 
-        _, stat_values = IoU_video(dir_name, dir_annot, model)
+        _, stat_values = IoU_video(dir_name, dir_annot, model, validation=True)
 
         if verbose:
             print("mean IoU : ", stat_values[-1][0], " Number of images with no box : ", stat_values[-1][1],
@@ -46,16 +46,15 @@ def gridSearchCV(model, grid, dir_name, dir_annot, verbose=False, autosave=""):
 
         V1 = pd.DataFrame(np.array(stat_values[0]).reshape((1, 3)), columns=["Mean IoU", "No box", "Mean IoU adjusted"], index=index)
         V2 = pd.DataFrame(np.array(stat_values[1]).reshape((1, 3)), columns=["Mean IoU", "No box", "Mean IoU adjusted"], index=index)
-        V3 = pd.DataFrame(np.array(stat_values[2]).reshape((1, 3)), columns=["Mean IoU", "No box", "Mean IoU adjusted"], index=index)
-        V4 = pd.DataFrame(np.array(stat_values[3]).reshape((1, 3)), columns=["Mean IoU", "No box", "Mean IoU adjusted"], index=index)
-        Total = pd.DataFrame(np.array(stat_values[4]).reshape((1, 3)), columns=["Mean IoU", "No box", "Mean IoU adjusted"], index=index)
+        T3 = pd.DataFrame(np.array(stat_values[2]).reshape((1, 3)), columns=["Mean IoU", "No box", "Mean IoU adjusted"], index=index)
+        Total = pd.DataFrame(np.array(stat_values[3]).reshape((1, 3)), columns=["Mean IoU", "No box", "Mean IoU adjusted"], index=index)
 
-        row = pd.concat([Total, V1, V2, V3, V4], axis=1, keys=('Total', 'V1', 'V2', 'V3', 'V4'))
+        row = pd.concat([Total, V1, V2, T3], axis=1, keys=('Total', 'V1', 'V2', 'T3'))
 
         df = df.append(row)
 
         if autosave != "":
-            df.to_csv(f"../Data/{autosave}")
+            df.to_csv(f"data/dataframe/{autosave}")
 
     return df
 
