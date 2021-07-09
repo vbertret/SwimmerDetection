@@ -33,6 +33,8 @@ pip install -r requirements.txt
 pip install -e .
 ```
 
+⚠️If you want Pytorch with cuda for GPU, you have to install it by your own.
+
 # :book: How to use the package src
 
 If you want to test the model directly on the database, here are some guidelines :
