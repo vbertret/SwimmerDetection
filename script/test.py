@@ -2,6 +2,7 @@ from src.color_segmentation import ColorBB
 from src.gaussian_mixture import GaussianMixtureBB
 from src.deep_learning import Swimnet
 from src.metrics.model_performance import IoU_video
+import torch
 
 #### Gaussian Mixture ####
 
