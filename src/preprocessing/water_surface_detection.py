@@ -48,13 +48,6 @@ def variance_initialization(filename, nb_frame):
     ret, variance = cv.threshold(variance, 110, 255, cv.THRESH_BINARY)
     variance = cv.medianBlur(variance, 25)
 
-    # n=14
-    # kernel = np.ones((2*n+1, 2*n+1), np.uint8)
-    # variance = cv.morphologyEx(variance, cv.MORPH_CLOSE, kernel)
-    # n=21
-    # kernel = np.ones((2*n+1, 2*n+1), np.uint8)
-    # variance = cv.morphologyEx(variance, cv.MORPH_OPEN, kernel)
-
     # Return the mean and the 2 classes created according to the variance
     return mean, variance
 
@@ -77,7 +70,7 @@ def surface_detection(filename, nb_frame, debug=False, adjust_pt1=0, adjust_pt2=
     adjust_pt1 : int
         decreasing the height of the left point ( default is 0 )
     adjust_pt2 : int
-        increasing the height of the right point ( default is 0 )
+        increasing the height of the right point ( default is 30 )
 
     Returns
     -------
@@ -165,6 +158,42 @@ def surface_detection(filename, nb_frame, debug=False, adjust_pt1=0, adjust_pt2=
 
     return a, b
 
+
+def polygon_construction(a, b, coord):
+    """
+    Given the line separating the texture/non texture area, build a polygon.
+
+    The method takes in entry the slope and the intercept of the line corresponding to the surface. 
+    In return, it creates a polygon corresponding to non texture pixel.
+
+    Parameters
+    ---------
+    a : float
+        the slope of the line
+    b : float
+        intercept of the line
+    coord : list
+        the coordinate of the researh area over the all image
+
+    Returns
+    -------
+    polygon : np.array
+        the list of the points defining the polygon
+    """
+
+    # Retrieval of the coordinates
+    x, y, w, _ = coord
+
+    # Building the points
+    pt1 = (0, int(a * x + b) - y)
+    pt2 = (w, int(a * (x + w) + b) - y)
+    pt3 = (w, 0)
+    pt4 = (0, 0)
+
+    # Building the polygon
+    polygon = np.array([pt1, pt2, pt3, pt4])
+
+    return polygon
 
 if __name__ == '__main__':
     a, b = surface_detection("../../data/images/Valset/background/V2V4", 117, debug=True, adjust_pt1=0, adjust_pt2=30)

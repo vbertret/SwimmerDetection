@@ -1,37 +1,64 @@
 import cv2.cv2 as cv
 import numpy as np
-import time
-from src.preprocessing.bb_tools import union, intersection
-from src.annotations.read_annotation import read_annotation
-from src.preprocessing.water_surface_detection import surface_detection
+from scipy.sparse import coo
+from src.preprocessing.bb_tools import bb_building, neighborhood_bb
+from src.preprocessing.water_surface_detection import polygon_construction
 
 class ColorBB():
+    """
+    This class is designed in order to make a color segmentation of an image. The segmentation can be done in
+    2 color spaces : HSV and YUV. Some parameters are used outside the class in order to make a segmentation 
+    on a video.
+
+    Attributes
+    ----------
+    color_cvt : int
+        Color spaces conversion
+    lower : list
+        the list of the 3 lower bounds for the segmentation
+    upper : list
+        the list of the 3 upper bounds for the segmentation
+    margin : int
+        the margin used to enlarge the box of the previous frame
+    detect_surface : boolean
+        if true, the method uses the detection of the surface
+    adjust_pt1 : int
+        decreasing the height of the left point for the detection of the surface
+    adjust_pt2 : int
+        increasing the height of the right point for the detection of the surface
+    use_time : boolean
+        if true, the method uses the precedent box to make the prediction
+    Methods
+    --------
+    set_params(**params)
+        Set the parameters of the estimator
+    predict(filename_img, debug=False, a=0, b=0, precBB=[])
+        Prediction of the Color Segmentation
+    """
 
     def __init__(self, color_space="hsv", lower_hsv=(0, 0, 0), upper_hsv=(179, 235, 110), lower_yuv=(0, 0, 70),
                  upper_yuv=(90, 150, 255), margin=100, detect_surface=True, adjust_pt1=0, adjust_pt2=30, use_time=True):
         """
         Parameters
         -----------
-        filename_img : str
-            the name of the image to use for the prediction
         color_space : str
             the name of the color_space in lowercase ( default is "hsv" )
         lower_hsv : tuple
             the list of the lower bound values for the HSV colour mode ( default is (0, 0, 0) )
         upper_hsv : tuple
-            the list of the upper bound values for the HSV colour mode ( default is (179, 210, 110) )
+            the list of the upper bound values for the HSV colour mode ( default is (179, 235, 110) )
         lower_yuv : tuple
-            the list of the lower bound values for the HSV colour mode ( default is (0, 0, 0) )
+            the list of the lower bound values for the HSV colour mode ( default is (0, 0, 70) )
         upper_yuv : tuple
-            the list of the upper bound values for the HSV colour mode ( default is (179, 140, 255) )
+            the list of the upper bound values for the HSV colour mode ( default is (90, 150, 255) )
         margin : int
             the margin used to enlarge the box of the previous frame ( default is 100 )
         detect_surface : boolean
-            if true, the method uses the detection of the surface
+            if true, the method uses the detection of the surface ( default is True )
         adjust_pt1 : int
             decreasing the height of the left point ( default is 0 )
         adjust_pt2 : int
-            increasing the height of the right point ( default is 0 )
+            increasing the height of the right point ( default is 30 )
         use_time : boolean
             if true, the method uses the precedent box to make the prediction ( default is True )
         """
@@ -133,9 +160,11 @@ class ColorBB():
             cv.imshow("image", img_ini)
             cv.waitKey(1)
 
-        # Adding median noises
-        #img = cv.medianBlur(img_ini, 5)
-        img = img_ini
+        #Copy of the image for the processing
+        img = img_ini.copy()
+
+        #Search the swimmer in the neighborhood of the precedent bounding box
+        img, coord = neighborhood_bb(img, self.margin, precBB)
 
         # Transformation of the colour mode of the image
         img_transform = cv.cvtColor(img, self.color_cvt)
@@ -147,68 +176,28 @@ class ColorBB():
             cv.imshow('mask1', mask)
             cv.waitKey(1)
 
-        #kernel = np.ones((5, 5), np.uint8)
-        #mask = cv.morphologyEx(mask, cv.MORPH_OPEN, kernel)
-
-        # Instead of searching the swimmer on all the images, the method searches
-        # the swimmer on a box around the box found in the previous frame
-        if len(precBB) != 0:
-            x_prec, y_prec, w_prec, h_prec = precBB
-
-            x_prec = max(x_prec - self.margin, 0)
-            y_prec = max(y_prec - self.margin, 0)
-
-            w_prec = min(w_prec + 2 * self.margin, 640 - x_prec)
-            h_prec = min(h_prec + 2 * self.margin, 480 - y_prec)
-
-            mask[:, 0:x_prec] = 0
-            mask[0:y_prec, :] = 0
-            mask[y_prec + h_prec:-1, :] = 0
-            mask[:, x_prec + w_prec:-1] = 0
-
         # Texture/Non texture segmentation
         if a != 0 and b != 0:
-            pt1 = (0, int(a * 0 + b))
-            pt2 = (640, int(a * 640 + b))
-            #cv.line(mask, pt1, pt2, 255, 3)
-            pt3 = (640, 0)
-            pt4 = (0, 0)
-            polygon = np.array([pt1, pt2, pt3, pt4])
+            polygon = polygon_construction(a, b, coord)
             mask = cv.fillPoly(mask, [polygon], 0)
-
-        # A pousser, choisir les meilleurs filtres
-        # kernel = np.ones((3, 3))
-        #  = cv.morphologyEx(mask, cv.MORPH_OPEN, kernel)
 
         if debug:
             cv.imshow('mask2', mask)
             cv.waitKey(1)
 
-        # Find contours
-        contours, hierarchy = cv.findContours(mask, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE)[-2:]
+        # Building the best bounding box according to the mask
+        best_rectangle = bb_building(mask)
 
-        # Building the rectangle (only one)
-        rects = []
-        for cnt in contours:
-            x, y, w, h = cv.boundingRect(cnt)
-            if cv.contourArea(cnt) > 800:
-                find = False
-                for i, (x_r, y_r, w_r, h_r) in enumerate(rects):
-                    x_in, y_in, w_in, h_in = intersection([x_r - 20, y_r, w_r + 40, h_r], [x - 20, y, w + 40, h])
-                    if w_in != 0 and h_in != 0:
-                        new_rect = union([x_r, y_r, w_r, h_r], [x, y, w, h])
-                        rects[i] = new_rect
-                        find = True
-                if not find:
-                    rects.append([x, y, w, h])
-
-        best_rectangle = []
-        if len(rects) != 0:
-            x, y, w, h = min(rects, key=lambda p: p[1])
-            best_rectangle = [x, y, w, h]
-            cv.rectangle(img_ini, (x, y), (x + w, y + h), (0, 0, 255), 2)
+        # Ajustement of the best box for the initial size of the image
+        if len(best_rectangle)!=0 and coord[2] != 640 and coord[3] !=480:
+            x_prec, y_prec, _, _ = coord
+            best_rectangle[0] = best_rectangle[0] + x_prec
+            best_rectangle[1] = best_rectangle[1] + y_prec
 
         if debug:
+            if len(best_rectangle)!=0:
+                x, y, w, h = best_rectangle
+                cv.rectangle(img_ini, (x, y), (x + w, y + h), (0, 0, 255), 2)
             cv.imshow('bounding box', img_ini)
             cv.waitKey(0)
             cv.destroyAllWindows()

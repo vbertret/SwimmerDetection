@@ -1,19 +1,37 @@
 import maxflow
 import cv2.cv2 as cv
 import numpy as np
+from scipy.sparse import coo
 from sklearn.mixture import GaussianMixture
 import pandas as pd
-from src.preprocessing.water_surface_detection import surface_detection
+from src.preprocessing.water_surface_detection import polygon_construction
 import pickle
 import time
 from skimage.util import img_as_ubyte
 from skimage import exposure
-from src.preprocessing.bb_tools import union, intersection
+from src.preprocessing.bb_tools import bb_building, neighborhood_bb
 
 class GaussianMixtureBB():
 
-    def __init__(self, filename=None, margin=100, threshold=0.5,  detect_surface=True, adjust_pt1=0, adjust_pt2=30, use_time=True, graph_cut=True):
+    def __init__(self, filename=None, margin=100, threshold=0.5,  detect_surface=True, adjust_pt1=0, adjust_pt2=0, use_time=True, graph_cut=True):
+        """
+        Parameters
+        -----------
+        margin : int
+            the margin used to enlarge the box of the previous frame ( default is 100 )
+        threshold : float
+            the threshold value to classify value between 0 and 1 ( default is 0.5 )
+        detect_surface : boolean
+            if true, the method uses the detection of the surface ( default is True )
+        adjust_pt1 : int
+            decreasing the height of the left point ( default is 0 )
+        adjust_pt2 : int
+            increasing the height of the right point ( default is 30 )
+        use_time : boolean
+            if true, the method uses the precedent box to make the prediction ( default is True )
+        """
 
+        # If filename is defined, load the model
         if filename is None:
             self.model = GaussianMixture(n_components=2)
         else:
@@ -23,6 +41,7 @@ class GaussianMixtureBB():
         self.margin = margin
         self.threshold = threshold
 
+        # Set the graph cut variable
         self.graph_cut = graph_cut
 
         # Set the detect surface
@@ -85,36 +104,24 @@ class GaussianMixtureBB():
         best_rectangle : [x, y, w, h] list
             the coordinates of the bounding box
         """
+
         # Loading image
         img = cv.imread(filename_img, cv.IMREAD_COLOR)
-        coord = [0, 0, 640, 480]
 
         if debug:
             cv.imshow("image", img)
             cv.waitKey(1)
 
-        if len(precBB)!=0:
-            x_prec, y_prec, w_prec, h_prec = precBB
-
-            x_prec = max(x_prec - self.margin, 0)
-            y_prec = max(y_prec - self.margin, 0)
-
-            w_prec = min(w_prec + 2*self.margin, 640 - x_prec)
-            h_prec = min(h_prec + 2*self.margin, 480 - y_prec)
-
-            img = img[y_prec:(y_prec + h_prec), x_prec:(x_prec + w_prec), :]
-
-            coord = [x_prec, y_prec, w_prec, h_prec]
-
+        #Search the swimmer in the neighborhood of the precedent bounding box
+        img, coord = neighborhood_bb(img, self.margin, precBB)
+        x_prec, y_prec, w_prec, h_prec = coord
         if len(precBB) != 0 and self.graph_cut:
             self.dst = self.dst[y_prec:(y_prec + h_prec), x_prec:(x_prec + w_prec)]
             self.dst = self.dst.reshape(-1)
 
-        # Creation dataframe
+        # Create the dataframe
         img2 = cv.cvtColor(img, cv.COLOR_BGR2HSV)
-
         img2 = img2.reshape(-1, 3)
-
         df = pd.DataFrame()
         df['ColourCode(H)'] = img2[:, 0]/255
         df['ColourCode(S)'] = img2[:, 1]/255
@@ -123,93 +130,61 @@ class GaussianMixtureBB():
         # Compute prediction
         prediction_gm = self.model.predict_proba(df)
 
-        if len(precBB) != 0:
-            mask_light = np.uint8((df['ColourCode(V)'].values < 250/255) * 255).reshape((h_prec, w_prec))
-        else:
-            mask_light = np.uint8((df['ColourCode(V)'].values < 250/255) * 255).reshape((480, 640))
+        # Apply a mask to eliminate the light in the swimming pool
+        mask_light = np.uint8((df['ColourCode(V)'].values < 250/255) * 255).reshape((h_prec, w_prec))
 
         kernel = (2, 2)
         mask_light = cv.morphologyEx(mask_light, cv.MORPH_CLOSE, kernel).reshape(-1)/255
-
         prediction_gm[mask_light == 0, 1] = 0
         prediction_gm[mask_light == 0, 0] = 1
 
+        # Modification of the probabilities according to the distance of the last mask
+        # founded
         if len(precBB) != 0 and self.graph_cut:
             temp1 = prediction_gm[:, 1] / self.dst
             temp2 = prediction_gm[:, 0] * self.dst
             prediction_gm[:, 1] = temp1 / (temp1 + temp2)
             prediction_gm[:, 0] = temp2 / (temp1 + temp2)
 
-        score_img = prediction_gm[:, 1]
-
-        # Building the mask
-        if len(precBB)!=0:
-            score_img = score_img.reshape((h_prec, w_prec))
-        else:
-            score_img = score_img.reshape((480, 640))
-
-        if self.graph_cut:
-
-            if len(precBB)!=0:
-                labels0 = prediction_gm[:, 0].reshape((h_prec, w_prec))
-                labels1 = prediction_gm[:, 1].reshape((h_prec, w_prec))
-            else:
-                labels0 = prediction_gm[:, 0].reshape((480, 640))
-                labels1 = prediction_gm[:, 1].reshape((480, 640))
-
-            mask, self.dst = graph_cut(labels0, labels1, coord)
-        else:
-            mask = np.array((score_img > self.threshold) * 255, dtype=np.uint8)
-
 
         #Texture/Non Texture segmentation
-        if a!=0 and b!=0:
+        polygon = polygon_construction(a, b, coord)
 
-            if len(precBB)!=0:
-                pt1 = (0, int(a * x_prec + b) - y_prec)
-                pt2 = (w_prec, int(a * (x_prec + w_prec) + b) - y_prec)
-                pt3 = (w_prec, 0)
-                pt4 = (0, 0)
-            else:
-                pt1 = (0, int(a*0+b))
-                pt2 = (640, int(a*640+b))
-                pt3 = (640, 0)
-                pt4 = (0, 0)
+        # 2 cases according to the variable graph_cut
+        if self.graph_cut:
+            # Restructure the probabilities as image
+            labels0 = prediction_gm[:, 0].reshape((h_prec, w_prec))
+            labels1 = prediction_gm[:, 1].reshape((h_prec, w_prec))
 
-            polygon = np.array([pt1, pt2, pt3, pt4])
+            # Apply the texture/non texture segmentation
+            labels0 = cv.fillPoly(np.ascontiguousarray(labels0*255, dtype=np.uint8), [polygon], 255)/255
+            labels1 = cv.fillPoly(np.ascontiguousarray(labels1*255, dtype=np.uint8), [polygon], 0)/255
+
+            # Compute the mask using graph cut
+            mask, self.dst = graph_cut(labels0, labels1, coord)
+        else:
+            # Restructure the probabilities of each pixel to be one as an image
+            score_img = prediction_gm[:, 1]
+            score_img = score_img.reshape((h_prec, w_prec))
+
+            # Convert the [0,1] range image to a binary image
+            mask = np.array((score_img > self.threshold) * 255, dtype=np.uint8)
+
+            # Apply Texture/Non Texture segmentation
             mask = cv.fillPoly(mask, [polygon], 0)
 
         if debug:
             cv.imshow('mask', mask)
             cv.waitKey(1)
 
-        # Find contours
-        contours, hierarchy = cv.findContours(mask, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE)[-2:]
+        # Building the best bounding box according to the mask
+        best_rectangle = bb_building(mask)
 
-        # Building the rectangle (only one)
-        rects = []
-        for cnt in contours:
-            x, y, w, h = cv.boundingRect(cnt)
-            if cv.contourArea(cnt) > 800:
-                find = False
-                for i, (x_r, y_r, w_r, h_r) in enumerate(rects):
-                    x_in, y_in, w_in, h_in = intersection([x_r - 20, y_r, w_r + 40, h_r], [x - 20, y, w + 40, h])
-                    if w_in != 0 and h_in != 0:
-                        new_rect = union([x_r, y_r, w_r, h_r], [x, y, w, h])
-                        rects[i] = new_rect
-                        find = True
-                if not find:
-                    rects.append([x, y, w, h])
-
-        best_rectangle = []
-        if len(rects) != 0:
-            x, y, w, h = min(rects, key=lambda p: p[1])
-            best_rectangle = [x, y, w, h]
-
-            if len(precBB)!=0:
-                best_rectangle[0] = best_rectangle[0] + x_prec
-                best_rectangle[1] = best_rectangle[1] + y_prec
-
+        # Ajustement of the best box for the initial size of the image
+        if len(best_rectangle)!=0 and len(precBB)!=0:
+            best_rectangle[0] = best_rectangle[0] + x_prec
+            best_rectangle[1] = best_rectangle[1] + y_prec
+            x, y, w, h = best_rectangle
             cv.rectangle(img, (x, y), (x + w, y + h), (0, 0, 255), 2)
 
         if debug:
@@ -220,7 +195,18 @@ class GaussianMixtureBB():
         return best_rectangle
 
     def train(self, dir_name, choice=None):
+        """
+        Training of the Gaussian Mixture
 
+        This method makes the training of a Gaussian Mixture model
+
+        Parameters
+        -----------
+        dir_name : str
+            the directory name of the directory containing the frames
+        choice : list
+            the list of the videos of interest ( default is None )
+        """
         # Reading the info.txt file
         f = open(f"{dir_name}/info.txt")
         data = f.readlines()
@@ -230,7 +216,7 @@ class GaussianMixtureBB():
         data_videos = [line.split(";") for line in data]
         data_videos = [[line[0], int(line[1]), int(line[2]), line[3].replace("\n", "")] for line in data_videos]
 
-        # Choice of the videos on which the model will be computed
+        # Choice of the videos on which video the model will be trained
         if choice == None:
             queue = range(len(data_videos))
         else:
@@ -253,18 +239,21 @@ class GaussianMixtureBB():
             # Computation of the rows for all the frames of the video
             for nb_filename in range(start, end, 4):
 
+                # Load the image
                 file_name = dir_name + "/" + str(video_title) + str(nb_filename).zfill(5) + ".jpg"
                 img = cv.imread(file_name)
 
+                # Convert the image to HSV color space and flatten it
                 img2 = cv.cvtColor(img, cv.COLOR_BGR2HSV)
-
                 img2 = img2.reshape(-1, 3)
 
+                # Compute the features for each pixel
                 df2 = pd.DataFrame()
-                df2['ColourCode(H)'] = img2[valid, 0] / 255
-                df2['ColourCode(S)'] = img2[valid, 1] / 255
-                df2['ColourCode(V)'] = img2[valid, 2] / 255
+                df2['ColourCode(H)'] = img2[:, 0] / 255
+                df2['ColourCode(S)'] = img2[:, 1] / 255
+                df2['ColourCode(V)'] = img2[:, 2] / 255
 
+                # Concatenation with precedent values
                 df = pd.concat([df, df2], axis=0)
 
         # Fit the model
@@ -272,7 +261,32 @@ class GaussianMixtureBB():
 
 
 def graph_cut(labels0, labels1, coord):
+    """
+    Compute the graph cut of the model defined in the report
 
+    This method minimize the energy of the energy function
+    defined in the report. The energy is defined in 2 parts :
+        - the first part is linked with the probabilities given by
+        labels0 and labels1
+        - the second part is linked to anisotropic Ising model
+    For more details, go to the report.
+
+    Parameters
+    -----------
+    labels0 : np.array
+        Map of probabilities for each pixel to be in the background
+    labels1 : np.array
+        Map of probabilities for each pixel to be in the foreground
+    coord : list
+        the coordinate of the researh area over the all image
+
+    Returns
+    -------
+    mask : np.array
+        the mask given by the minimization of the energy function
+    dst : np.array
+        the distance of each pixel to the mask
+    """
     # Initialization of the graph
     g = maxflow.Graph[float]()
 
@@ -313,11 +327,13 @@ def graph_cut(labels0, labels1, coord):
     mask2 = np.zeros((480, 640), dtype=np.uint8)
     x_prec, y_prec, w_prec, h_prec = coord
     mask2[y_prec:(y_prec + h_prec), x_prec:(x_prec + w_prec)] = mask
-    dst = cv.distanceTransform(255 - mask2, cv.DIST_L1, 3, dstType = cv.CV_32F)/600 + 0.1
+    dst = cv.distanceTransform(255 - mask2, cv.DIST_L1, 3, dstType = cv.CV_32F)
+    dst = dst/np.max(dst) + 0.1
 
     # Amplification of the distance
-    dst[dst < 0.3] = dst[dst < 0.3]*0.1
-    dst[dst >= 0.3] = dst[dst >= 0.3]*100
+    limit = 0.2
+    dst[dst < limit] = dst[dst < limit]*0.5
+    dst[dst >= limit] = dst[dst >= limit]*100
 
     return mask, dst
 
