@@ -36,13 +36,5 @@ if __name__ == '__main__':
     train_loader = DataLoader(trainset, batch_size=batch_size, shuffle=True, num_workers=8)
     test_loader = DataLoader(valset, batch_size=batch_size, shuffle=True, num_workers=8)
 
-    #################################################################
 
-    model = Swimnet("mobilenet-v3-large")
-
-    criterion = torch.nn.L1Loss(reduction="sum")
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
-    max_epochs = 2000
-
-    model = train_and_test(model, train_loader, test_loader, criterion, optimizer, max_epochs, tensorboard="large-new_dataset")
 

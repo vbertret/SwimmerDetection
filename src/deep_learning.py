@@ -1,5 +1,5 @@
 import torch
-from skimage import io
+from skimage import io, transform
 import torch.nn as nn
 import torchvision
 from src.metrics.model_performance import IoU
@@ -19,6 +19,7 @@ model_builder = {'resnet18'     : [lambda:torchvision.models.resnet18(pretrained
                  'squeezenet1_1': [lambda:torchvision.models.squeezenet1_1(pretrained=True), 86_528],
                  'mobilenet-v3-large': [lambda:torchvision.models.mobilenet_v3_large(pretrained=True), 960],
                  'mobilenet-v3-small': [lambda:torchvision.models.mobilenet_v3_small(pretrained=True), 576],
+                 'mobilenet-v2': [lambda:torchvision.models.mobilenet_v2(pretrained=True), 1280],
                  'efficientnet' : [None, 2]}
 
 
@@ -41,8 +42,10 @@ class FeatureExtractor(nn.Module):
             self.body = nn.Sequential(*list(model.children())[:-1])
         elif 'densenet' in model_name or 'squeezenet' in model_name:
             self.body = model.features
-        elif 'mobilenet' in model_name:
+        elif 'mobilenet-v3' in model_name:
             self.body = nn.Sequential(*list(model.children())[:-1])
+        elif 'mobilenet-v2' in model_name:
+            self.body = model.features
 
     def forward(self, x):
         return self.body(x)
@@ -50,7 +53,7 @@ class FeatureExtractor(nn.Module):
 
 class Swimnet(nn.Module):
 
-    def __init__(self, feature_extractor_name):
+    def __init__(self, feature_extractor_name, type=1):
         super(Swimnet, self).__init__()
 
         # Initialize the feature extractor
@@ -68,29 +71,36 @@ class Swimnet(nn.Module):
                                        nn.Linear(64, 4), nn.Sigmoid())
         """ # before, only one layer with 1024 neurons
         self.head = nn.Sequential(nn.Dropout(),
-                                  nn.Linear(self.feature_extractor.num_features, 1024), nn.ReLU(),
-                                  nn.BatchNorm1d(1024),
-                                  nn.Dropout(),
-                                  nn.Linear(1024, 4), nn.Sigmoid())
+                              nn.Linear(self.feature_extractor.num_features, 1024), nn.ReLU(),
+                              nn.Dropout(0.2),
+                              nn.BatchNorm1d(1024),
+                              nn.Linear(1024, 4), nn.Sigmoid()) #alban nicolas beuve  #pas de generalisation car pas assez de video #data augmentation (flippé, decallé, rajouter de la luminosité)
 
         self.detect_surface = False
         self.use_time = False
+        self.type = type
+
     def forward(self, x):
 
         # Flatten the inputs
         features = self.feature_extractor(x)
+        if self.type == 2:
+            features = nn.functional.adaptive_avg_pool2d(features, (1, 1))
         features = features.view(features.size()[0], -1)
         bbox = self.head(features)
 
         return bbox
 
     def predict(self, file_name, a=0, b=0, precBB=[]):
+    #[0.485, 0.456, 0.406] # [0.229, 0.224, 0.225] #
+        mean_nm = [0.11356854810507422, 0.45112476323143036, 0.6064378756359288]
+        std_nm = [0.14808664052222273, 0.17381441351050686, 0.1814740496541503]  #
 
         input_size = 224
         transformations = transforms.Compose([
             Rescale((input_size, input_size)),
             ToTensor(),
-            Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+            Normalize(mean_nm, std_nm)
         ])
 
         img = io.imread(file_name)
@@ -102,7 +112,6 @@ class Swimnet(nn.Module):
         self.eval()
         bbox = self.forward(x)[0].detach().numpy()
         bbox = [int(bbox[0]*640), int(bbox[1]*480), int((bbox[2] - bbox[0])*640), int((bbox[3] - bbox[1])*480)]
-
 
         return bbox
 
@@ -133,8 +142,9 @@ def train(model, dataloader, criterion, optimizer, device, tensorboard=(None, 0)
 
         # Compute the value of the loss and the Intersection over Union for this batch
         loss = criterion(outputs, bbs)
-        iou = np.sum([IoU([outputs[i][0], outputs[i][1], outputs[i][2] - outputs[i][0], outputs[i][3] - outputs[i][1]],
-                          [bbs[i][0], bbs[i][1], bbs[i][2] - bbs[i][0], bbs[i][3] - bbs[i][1]]).cpu().detach().item() for i in range(outputs.shape[0])])
+        iou = [IoU([outputs[i][0], outputs[i][1], outputs[i][2] - outputs[i][0], outputs[i][3] - outputs[i][1]],
+                          [bbs[i][0], bbs[i][1], bbs[i][2] - bbs[i][0], bbs[i][3] - bbs[i][1]]).cpu().detach().item() for i in range(outputs.shape[0])]
+        iou = np.sum(iou)
         iou_total += iou
 
         # Clear the gradient buffers of the optimized parameters.
@@ -187,6 +197,9 @@ def train_and_test(model, train_dataloader, test_dataloader, criterion, optimize
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
     print(f"Device : {device}")
 
+    # Store the best model
+    best_iou = 0
+
     # Move model to the device which will be used for train and test
     model.to(device)
 
@@ -228,9 +241,14 @@ def train_and_test(model, train_dataloader, test_dataloader, criterion, optimize
                   f" loss: {history_train['loss'][-1]:.4f}, IoU: {history_train['IoU'][-1]:2.2f}%"
                   f" - test_loss: {history_test['loss'][-1]:.4f}, test_IoU: {history_test['IoU'][-1]:2.2f}%")
 
+        if verbose or epoch % 5 == 0:
             writer.add_figure(f'predictions vs. actuals, epoch : {epoch}',
-                              plot_bouding_box(model, train_dataloader, device),
-                              global_step=epoch)
+                                  plot_bouding_box(model, train_dataloader, device),
+                                  global_step=epoch)
+
+        if tensorboard is not None and history_test['IoU'][-1] > best_iou:
+            best_iou = history_test['IoU'][-1]
+            torch.save(model.state_dict(), f'../models/{tensorboard}')
 
     # Generate diagnostic plots for the loss and accuracy
     fig, axes = plt.subplots(ncols=2, figsize=(9, 4.5))
@@ -244,14 +262,16 @@ def train_and_test(model, train_dataloader, test_dataloader, criterion, optimize
 
     writer.close()
 
-    return model
+    return model.load_state_dict(torch.load(f'../models/{tensorboard}'))
 
 
 def plot_bouding_box(model, dataloader, device):
 
+    model.eval()
+
     batch_sample = next(iter(dataloader))
     batch_img = batch_sample['image']
-    batch_bbox = batch_sample['bounding_box']
+    batch_bbox = batch_sample['bounding_box'].float()
 
     with torch.no_grad():
         inputs = batch_img.float().to(device)
@@ -261,7 +281,7 @@ def plot_bouding_box(model, dataloader, device):
     std_nm = [0.229, 0.224, 0.225]
 
     fig = plt.figure(figsize=(48, 12))
-    for idx in np.arange(4):
+    for idx in range(4):
         ax = fig.add_subplot(1, 4, idx + 1, xticks=[], yticks=[])
 
         img2 = batch_img[idx].cpu().numpy()
@@ -271,7 +291,7 @@ def plot_bouding_box(model, dataloader, device):
         img2[:, :, 0] = (img2[:, :, 0]*std_nm[0] + mean_nm[0])*255
         img2[:, :, 1] = (img2[:, :, 1]*std_nm[1] + mean_nm[1])*255
         img2[:, :, 2] = (img2[:, :, 2]*std_nm[2] + mean_nm[2])*255
-        img2 = img = np.ascontiguousarray(img2, dtype=np.uint8)
+        img2 = np.ascontiguousarray(img2, dtype=np.uint8)
 
         x1_gt, y1_gt, x2_gt, y2_gt = batch_bbox[idx].cpu().numpy()
         x1_gt = int(x1_gt * w)
@@ -290,6 +310,7 @@ def plot_bouding_box(model, dataloader, device):
 
         gt = (x1_gt, y1_gt, x2_gt - x1_gt, y2_gt - y1_gt)
         pred = (x1_pred, y1_pred, x2_pred - x1_pred, y2_pred - y1_pred)
+
         iou = IoU(gt, pred)*100
         cv.putText(img2, f"IoU : {iou}", (10, 15), 0, 0.5, (255, 255, 0), 2)
 
