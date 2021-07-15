@@ -53,39 +53,25 @@ class FeatureExtractor(nn.Module):
 
 class Swimnet(nn.Module):
 
-    def __init__(self, feature_extractor_name, type=1):
+    def __init__(self, feature_extractor_name):
         super(Swimnet, self).__init__()
 
         # Initialize the feature extractor
         self.feature_extractor = FeatureExtractor(feature_extractor_name)
 
         # Initialize the head bbox
-        """
-        self.head = nn.Sequential(
-                                       nn.Linear(self.feature_extractor.num_features, 1024), nn.ReLU(),
-                                       nn.BatchNorm1d(1024),
-                                       nn.Linear(1024, 256), nn.ReLU(),
-                                       nn.BatchNorm1d(256),
-                                       nn.Linear(256, 64), nn.ReLU(),
-                                       nn.BatchNorm1d(64),
-                                       nn.Linear(64, 4), nn.Sigmoid())
-        """ # before, only one layer with 1024 neurons
         self.head = nn.Sequential(nn.Dropout(),
                               nn.Linear(self.feature_extractor.num_features, 1024), nn.ReLU(),
-                              nn.Dropout(0.2),
-                              nn.BatchNorm1d(1024),
-                              nn.Linear(1024, 4), nn.Sigmoid()) #alban nicolas beuve  #pas de generalisation car pas assez de video #data augmentation (flippé, decallé, rajouter de la luminosité)
+                              nn.Linear(1024, 4), nn.Sigmoid()) #alban nicolas beuve 
 
         self.detect_surface = False
         self.use_time = False
-        self.type = type
 
     def forward(self, x):
 
         # Flatten the inputs
         features = self.feature_extractor(x)
-        if self.type == 2:
-            features = nn.functional.adaptive_avg_pool2d(features, (1, 1))
+        # features = nn.functional.adaptive_avg_pool2d(features, (1, 1))
         features = features.view(features.size()[0], -1)
         bbox = self.head(features)
 
@@ -241,7 +227,7 @@ def train_and_test(model, train_dataloader, test_dataloader, criterion, optimize
                   f" loss: {history_train['loss'][-1]:.4f}, IoU: {history_train['IoU'][-1]:2.2f}%"
                   f" - test_loss: {history_test['loss'][-1]:.4f}, test_IoU: {history_test['IoU'][-1]:2.2f}%")
 
-        if verbose or epoch % 5 == 0:
+        if tensorboard is not None and epoch % 5 == 0:
             writer.add_figure(f'predictions vs. actuals, epoch : {epoch}',
                                   plot_bouding_box(model, train_dataloader, device),
                                   global_step=epoch)
@@ -280,7 +266,7 @@ def plot_bouding_box(model, dataloader, device):
     mean_nm = [0.485, 0.456, 0.406]
     std_nm = [0.229, 0.224, 0.225]
 
-    fig = plt.figure(figsize=(48, 12))
+    fig = plt.figure(figsize=(24, 6))
     for idx in range(4):
         ax = fig.add_subplot(1, 4, idx + 1, xticks=[], yticks=[])
 
