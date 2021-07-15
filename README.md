@@ -74,6 +74,17 @@ IoU_values, stat_values = IoU_video("../data/images/Testset", "../data/annotatio
 If you want more details about the parameters of each model, there are well
 defined in the documentation of each class.
 
+# Presentation of the different method
+
+## Color Segmentation
+![SwimXYZ Presentation](https://user-images.githubusercontent.com/6428515/125781660-929177f3-3bd2-413a-a26e-dde4c466bf8d.jpg)
+
+## Gaussian Mixture
+![SwimXYZ Presentation (1)](https://user-images.githubusercontent.com/6428515/125781810-79f947bd-8262-48f1-ab7c-65e626766422.jpg)
+
+## Swimnet
+![SwimXYZ Presentation (2)](https://user-images.githubusercontent.com/6428515/125781890-1020594b-a976-4a20-a840-d661a0eea74d.jpg)
+
 # Organisation
 * `\data`-- all the data of the project
   * `\images` all the images of the database separated in 3 directories Testset, Trainset and Valset
