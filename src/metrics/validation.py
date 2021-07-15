@@ -32,11 +32,11 @@ def gridSearchCV(model, grid, dir_name, dir_annot, verbose=False, autosave=""):
         if verbose:
             print(params)
 
-        _, stat_values = IoU_video(dir_name, dir_annot, model, validation=True)
+        _, _, stat_values = IoU_video(dir_name, dir_annot, model, validation=True)
 
         if verbose:
             print("mean IoU : ", stat_values[-1][0], " Number of images with no box : ", stat_values[-1][1],
-                  " IoU mean with no box : ", stat_values[-1][2])
+                  " IoU mean with no box : ", stat_values[-1][2], " mean score : ", stat_values[-1][3])
 
         index = ""
         for key, values in params.items():
@@ -44,10 +44,10 @@ def gridSearchCV(model, grid, dir_name, dir_annot, verbose=False, autosave=""):
 
         index = [index[0:-2]]
 
-        V1 = pd.DataFrame(np.array(stat_values[0]).reshape((1, 3)), columns=["Mean IoU", "No box", "Mean IoU adjusted"], index=index)
-        V2 = pd.DataFrame(np.array(stat_values[1]).reshape((1, 3)), columns=["Mean IoU", "No box", "Mean IoU adjusted"], index=index)
-        T3 = pd.DataFrame(np.array(stat_values[2]).reshape((1, 3)), columns=["Mean IoU", "No box", "Mean IoU adjusted"], index=index)
-        Total = pd.DataFrame(np.array(stat_values[3]).reshape((1, 3)), columns=["Mean IoU", "No box", "Mean IoU adjusted"], index=index)
+        V1 = pd.DataFrame(np.array(stat_values[0]).reshape((1, 4)), columns=["Mean IoU", "No box", "Mean IoU adjusted", "Mean score"], index=index)
+        V2 = pd.DataFrame(np.array(stat_values[1]).reshape((1, 4)), columns=["Mean IoU", "No box", "Mean IoU adjusted", "Mean score"], index=index)
+        T3 = pd.DataFrame(np.array(stat_values[2]).reshape((1, 4)), columns=["Mean IoU", "No box", "Mean IoU adjusted", "Mean score"], index=index)
+        Total = pd.DataFrame(np.array(stat_values[3]).reshape((1, 4)), columns=["Mean IoU", "No box", "Mean IoU adjusted", "Mean score"], index=index)
 
         row = pd.concat([Total, V1, V2, T3], axis=1, keys=('Total', 'V1', 'V2', 'T3'))
 
