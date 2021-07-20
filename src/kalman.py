@@ -23,16 +23,24 @@ class KalmanFilter(object):
     R : np.array
         the Initial Measurement Noise Covariance
     P : np.array
-        the Initial Covariance Matrix
+        the initial covariance matrix
+    method : str
+        the name of the method to compute the height and the width of the bounding box
+    beta, nbstep, S_w, S_h : float
+        the values used to compute the exponentially weighted average for the width and the height
+    max_h, max_w : list
+        the values used to find the maximum among the 20 last value of the width and the height
 
     Methods
     -------
     predict():
-        Make a prediction of the bounding box
+        Make a prediction of the middle of the bounding box
+    predictBB(bounding_box, method):
+        Make the prediction of the entire bounding box
     update(z):
         Update the parameter according to the coordinates founded by an estimator
     """
-    def __init__(self, dt, x_ini):
+    def __init__(self, dt, x_ini, method):
         """
         Parameters
         ----------
@@ -40,6 +48,8 @@ class KalmanFilter(object):
             the time between 2 frames
         x_ini : [x_middle, y_middle, vx, vy]
             the initialization values
+        method : str
+            the name of the method to compute the height and the width of the bounding box
         """
         # Define sampling time ( time between 2 frames)
         self.dt = dt
@@ -73,6 +83,17 @@ class KalmanFilter(object):
                            [0, 0, 10, 0],
                            [0, 0, 0, 10]])
 
+        # Initialization of different values according to the method
+        self.method = method
+        if self.method == "avg":
+            self.beta = 0.95
+            self.nbstep=1
+            self.S_w = 0
+            self.S_h = 0
+        elif self.method == "max":
+            self.max_h = []
+            self.max_w = []
+
     def predict(self):
         """
         Prediction of the Kalman Filter
@@ -90,6 +111,69 @@ class KalmanFilter(object):
         # P = A*P*A' + Q
         self.P = np.dot(np.dot(self.A, self.P), self.A.T) + self.Q
         return self.x[:2]
+
+    def predictBB(self, bounding_box, method):
+        """
+        Make the prediction of the entire bounding box.
+
+        Parameters
+        ----------
+        bounding_box : list
+            The coordinates of the bounding box founded by an algorithm. If it has found no
+            bounding box, the list is empty.
+        method : str
+            the name of the method used to compute the height and the width of the bounding box
+        
+        Return
+        ------
+        BB : [x, y, w, h] list
+            the coordinnates of the bounding box predicted by the Kalman Filter
+        """
+        
+        # Compute the prediction of the Kalman filter
+        middle_x, middle_y = self.predict()
+
+        if len(bounding_box) != 0:
+
+
+            # Recovering the coordinates of the bounding box
+            x, y, w, h = bounding_box
+
+            # Incrementation of the nb of value for the exponentially weighted average
+            if self.method == "avg":
+                self.nbstep += 1
+
+            # Update the max or the weighted average for h and w
+            if self.method == "avg":
+                self.S_h = self.beta * self.S_h + (1-self.beta) * h
+                self.S_w = self.beta * self.S_w + (1-self.beta) * w
+            elif self.method == "max":
+                if len(self.max_h)>=20:
+                    self.max_h.pop(0)
+                    self.max_w.pop(0)
+                self.max_h.append(h)
+                self.max_w.append(w)
+
+            # Update the prediction of the Kalman filter with the value found by the estimator
+            middle_x, middle_y = self.update([[x + w/2], [y + h/2]])
+
+        # Compute the height and the width of the bounding box according to the method
+        if self.method == "avg":
+            S_h_adj = self.S_h / (1 - self.beta ** self.nbstep)
+            S_w_adj = self.S_w / (1 - self.beta ** self.nbstep)
+            x = int(middle_x - S_w_adj/2)
+            y = int(middle_y - S_h_adj/2)
+            w = int(S_w_adj)
+            h = int(S_h_adj)
+        elif self.method == "max":
+            w = int(max(self.max_w))
+            h = int(max(self.max_h))
+            x = int(middle_x - w/2)
+            y = int(middle_y - h/2)
+            
+        BB = [x, y, w, h]
+
+        return BB
 
     def update(self, z):
         """

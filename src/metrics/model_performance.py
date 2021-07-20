@@ -1,5 +1,6 @@
 from os import stat
 import cv2.cv2 as cv
+from matplotlib import use
 import numpy as np
 import time
 from src.preprocessing.bb_tools import union, intersection
@@ -277,14 +278,18 @@ def IoU_video(dir_name, dir_annot, model, use_kalman=None, choice=None, debug=Fa
         if true, the method displays each step ( default is False )
     validation : boolean
         if true, the method takes directly tyhe value of a and b already calculated ( default is False )
+    margin : int
+        add a margin, on each side of the bounding box so that the box is larger ( default is 0 )
 
     Returns
     -------
     IoU_values : list of list
         it contains all the IoU values for all the frames and all the videos
+    score_values : list of list
+        it contains all the score values for all the frames and all the videos
     stat_values : list of list
-        it contains some statistics about each videos : mean IoU, the number of frames with the IoU equal to 0,
-        and the mean IoU without the frames with IoU equal to 0
+        it contains some statistics about each videos : mean IoU, the number of frames with the IoU equal to 0, 
+        the mean IoU without the frames with IoU equal to 0 and the mean Score
     """
     # Reading the info.txt file
     f = open(f"{dir_name}/info.txt")
@@ -305,7 +310,6 @@ def IoU_video(dir_name, dir_annot, model, use_kalman=None, choice=None, debug=Fa
     IoU_values = []
     score_values = []
     stat_values = []
-    t_ite = time.time()
     quit = False
     stat_total = [0, 0, 0, 0]
     nb_total = 0
@@ -336,25 +340,13 @@ def IoU_video(dir_name, dir_annot, model, use_kalman=None, choice=None, debug=Fa
         else:
             a, b = 0, 0
 
-        # Initialization of the bounding box and the array of IoU values
+        # Initialization of the bounding box and the array of IoU and score values
         BB = []
         IoU_video = []
         score_video = []
         no_box = 0
-
-        # Initialization of the value for the KalmanFilter
-        if use_kalman is not None:
-            found = False
-            middle_x = 0
-            middle_y = 0
-            t=1
-            if use_kalman == "avg":
-                beta = 0.95
-                S_w = 0
-                S_h = 0
-            elif use_kalman == "max":
-                max_h = []
-                max_w = []
+        found = False
+        t_ite = time.time()
 
         # Computation of the IoU for all the frames of the video
         for nb_filename in range(start, end):
@@ -374,113 +366,79 @@ def IoU_video(dir_name, dir_annot, model, use_kalman=None, choice=None, debug=Fa
             else:
                 BB = model.predict(file_name, a=a, b=b, precBB=[])
 
-            # Computation of the number of frames per second
-            fps = 1 / (time.time() - t_ite + 10e-10)
-
             # Read the ground truth annotation
             BB_ground_truth = read_annotation(annot_name)
-            
-            if use_kalman is not None and found:
-                middle_x, middle_y = kf.predict()
 
-            if (debug):
-                img = cv.imread(file_name, cv.IMREAD_COLOR)
-                x_a, y_a, w_a, h_a = BB_ground_truth
-                cv.rectangle(img, (x_a, y_a), (x_a + w_a, y_a + h_a), (255, 0, 0), 2)
-                cv.line(img, (0, int(b)), (640, int(a*640+b)), (0, 0, 255), 3)
-
-
-            # If there is no bounded box found, the IoU is equal to O
-            if BB == []:
-                if use_kalman is None or not found:
-                    IoU_video.append(0)
-                    score_video.append(-1)
-                    no_box += 1
-            # Otherwise, the method compute the IoU
+            # If there is no bounded box found, the IoU is equal to O, the score to -1
+            if BB == [] and (use_kalman is None or not found):
+                IoU_video.append(0)
+                score_video.append(-1)
+                no_box += 1
+            # Otherwise, the method compute the IoU and the score
             else:
+
+                # If specified, use a kalman filter to change the prediction
+                if use_kalman is not None:
+                    BB_not_kalman = BB
+                    if not found:
+                        x_p, y_p, w_p, h_p = BB
+                        x_ini = np.array([[x_p + w_p/2], [y_p + h_p/2], [0], [0]])
+                        kf = KalmanFilter(1/60, x_ini, use_kalman)
+                        found = True
+                    else:
+                        BB = kf.predictBB(BB, use_kalman)
 
                 x, y, w, h = BB
 
+                #If specified, take a larger a bounding box
                 if margin != 0:
-                    x -= margin
-                    y -= margin
-                    h += 2*margin
-                    w += 2*margin
+                    x = max(x-margin, 0)
+                    y = max(y-margin, 0)
+                    h = min(h + 2*margin, 480 - y)
+                    w = min(w + 2*margin, 640 - x)
                     BB = [x, y, w, h]
 
-                if use_kalman is None or not found:
-                    cropped_img = img_ini[y:y+h, x:x+w]
-                    IoU_video.append(IoU(BB, BB_ground_truth))
-                    score_video.append(score(BB_ground_truth, BB))
-
-                if (use_kalman is None or not found) and IoU_video[-1] == 0:
-                    no_box += 1
-
-                if use_kalman is not None:
-                    # Incrementation of the nb of value for the exponentially weighted average
-                    t = t + 1
-
-                    # Update the max or the weighted average for h and w
-                    if use_kalman == "avg":
-                        S_h = beta * S_h + (1-beta) * h
-                        S_w = beta * S_w + (1-beta) * w
-                        S_h_adj = S_h / (1 - beta**t)
-                        S_w_adj = S_w / (1 - beta ** t)
-                    elif use_kalman == "max":
-                        if len(max_h)>=20:
-                            max_h.pop(0)
-                            max_w.pop(0)
-                        max_h.append(h)
-                        max_w.append(w)
-
-                    # If a box is found, update the Kalman filter
-                    if found:
-                        middle_x, middle_y = kf.update([[x + w/2], [y + h/2]])
-
-
-                    # Initialize Kalman filter
-                    if not found:
-                        found = True
-                        x_ini = np.array([[x + w/2], [y + h/2], [0], [0]])
-                        kf = KalmanFilter(1/60, x_ini)
-
-                if debug:
-                    cv.rectangle(img, (x, y), (x + w, y + h), (0, 255, 0), 2)
-                    cv.putText(img, "Predicted BB", (x, y + h + 20), 0, 0.5, (0, 255, 0), 2)
-
-            if use_kalman is not None and middle_x !=0 and middle_y != 0:
-                if use_kalman == "avg":
-                    x = int(middle_x - S_w_adj/2)
-                    y = int(middle_y - S_h_adj/2)
-                    w = int(S_w_adj)
-                    h = int(S_h_adj)
-                elif use_kalman == "max":
-                    w = int(max(max_w))
-                    h = int(max(max_h))
-                    x = int(middle_x - w/2)
-                    y = int(middle_y - h/2)
-                    
-
-                BB = [x, y, w, h]
+                # Compute the score and IoU
                 IoU_video.append(IoU(BB, BB_ground_truth))
                 score_video.append(score(BB_ground_truth, BB))
 
+                # If there is no intersection, increment the number of no_box
                 if IoU_video[-1] == 0:
                     no_box += 1
 
-                if debug:
-                    cv.rectangle(img, (x, y), (x + w, y + h), (0, 0, 255), 2)
-                    cv.putText(img, "Kalman Filter", (x, y + h + 20), 0, 0.5, (0, 0, 255), 2)
-                    cropped_img = img_ini[y:y+h, x:x+w]
+            # Computation of the number of frames per second
+            fps = 1 / (time.time() - t_ite + 10e-10)
 
             if debug:
+                # Read the image
+                img = cv.imread(file_name, cv.IMREAD_COLOR)
+
+                # Draw the informations corresponding to the ground truth bounding box
+                x_gt, y_gt, w_gt, h_gt = BB_ground_truth
+                cv.rectangle(img, (x_gt, y_gt), (x_gt + w_gt, y_gt + h_gt), (255, 0, 0), 2)
+                cv.putText(img, "True BB", (x_gt, y_gt - 10), 0, 0.5, (255, 0, 0), 2)
+
+                # Draw the informations corresponding to the predicted bounding box
+                if use_kalman is None and len(BB) != 0:
+                    x_p, y_p, w_p, h_p = BB
+                    cv.rectangle(img, (x_p, y_p), (x_p + w_p, y_p + h_p), (0, 255, 0), 2)
+                    cv.putText(img, "Predicted BB", (x_p, y_p + h_p + 20), 0, 0.5, (0, 255, 0), 2)
+                elif use_kalman is not None and len(BB)!= 0:
+                    x_k, y_k, w_k, h_k = BB
+                    cv.rectangle(img, (x_k, y_k), (x_k + w_k, y_k + h_k), (0, 0, 255), 2)
+                    cv.putText(img, "Kalman Filter", (x_k, y_k + h_k + 20), 0, 0.5, (0, 0, 255), 2)
+                    if len(BB_not_kalman) != 0:
+                        x_p, y_p, w_p, h_p = BB_not_kalman
+                        cv.rectangle(img, (x_p, y_p), (x_p + w_p, y_p + h_p), (0, 255, 0), 2)
+                        cv.putText(img, "Predicted BB", (x_p, y_p + h_p + 20), 0, 0.5, (0, 255, 0), 2)
+
+                # Write other informations
                 cv.putText(img, "IoU : " + str(round(IoU_video[-1], 2)), (10, 40), 0, 1.5, (0, 0, 255), 2)
                 cv.putText(img, "Score : " + str(round(score_video[-1], 2)), (10, 450), 0, 1.5, (0, 0, 255), 2)
-                cv.putText(img, "True BB", (x_a, y_a - 10), 0, 0.5, (255, 0, 0), 2)
                 cv.putText(img, "FPS : " + str(round(fps, 2)), (350, 40), 0, 1.5, (0, 255, 255), 2)
+
+                # Show the image                
                 cv.imshow("Bounding box", img)
-                cropped_img = cv.resize(cropped_img, (256, 256))
-                cv.imshow("Cropped Image", cropped_img)
                 if cv.waitKey(2) & 0xFF == ord('q'):
                     quit = True
                     break
@@ -505,14 +463,17 @@ def IoU_video(dir_name, dir_annot, model, use_kalman=None, choice=None, debug=Fa
         if quit:
             break
 
+    # Compute and display the global result on all the videos
     stat_total[0] = stat_total[0]/nb_total
     stat_total[3] = stat_total[3]/nb_total
     stat_total[2] = stat_total[2]/(nb_total - stat_total[1])
     stat_values.append(stat_total)
-    cv.destroyAllWindows()
     if debug:
-            print("TOTAL mean IoU : ", stat_total[0], " Number of images with no box : ", stat_total[1],
-                " IoU mean with no box : ", stat_total[2], " mean score : ", stat_total[3])
+        print("TOTAL mean IoU : ", stat_total[0], " Number of images with no box : ", stat_total[1],
+            " IoU mean with no box : ", stat_total[2], " mean score : ", stat_total[3])
+
+    # Destroy all windows
+    cv.destroyAllWindows()
 
     return IoU_values, score_values, stat_values
 
