@@ -45,7 +45,7 @@ def gridBuilding(parameters):
     
     return parameters_values
 
-def gridSearchCV(model, grid, dir_name, dir_annot, verbose=False, autosave=""):
+def gridSearchCV(model, grid, dir_name, dir_annot, verbose=False, autosave="", validation=False):
     """
     Exhaustive search over specified parameter values for an estimator.
 
@@ -65,7 +65,9 @@ def gridSearchCV(model, grid, dir_name, dir_annot, verbose=False, autosave=""):
     verbose : bool
         If true, a summary of each test is printed ( default is False )  
     autosave : str
-        The filename where the experience can be saved ( default is "" )      
+        The filename where the experience can be saved ( default is "" ) 
+    validation : bool
+        if true, the method doesn't compute the value of the surface but take the value already calculated ( default is False ) 
     
     Return
     ------
@@ -84,7 +86,7 @@ def gridSearchCV(model, grid, dir_name, dir_annot, verbose=False, autosave=""):
             print(params)
 
         # Compute the score for the experiment
-        _, _, stat_values = IoU_video(dir_name, dir_annot, model, validation=True)
+        _, _, stat_values = IoU_video(dir_name, dir_annot, model, validation=validation)
 
         if verbose:
             print("mean IoU : ", stat_values[-1][0], " Number of images with no box : ", stat_values[-1][1],

@@ -6,19 +6,20 @@ import torch
 
 #### Gaussian Mixture ####
 
-#filename = "../models/GMM_model_test_vid_23_full"
-#model = GaussianMixtureBB(filename, threshold=0.5, graph_cut=False, use_time=False)
+# filename = "models/GMM_model_test_vid_23_full"
+# model = GaussianMixtureBB(filename, threshold=0.5, graph_cut=True, use_time=False)
 
 #### Deep Learning ####
 
-# PATH = "../models/mobilenet-V3-small"
+# PATH = "models/dataaug6_end"
 # model = Swimnet("mobilenet-v3-small")
-# model.load_state_dict(torch.load(PATH))
+# model.load_state_dict(torch.load(PATH, map_location=torch.device('cpu')))
 
 #### Color Segmentation ####
 
 model = ColorBB("hsv", use_time=False)
 
-IoU_values, stat_values = IoU_video("../data/images/Testset", "../data/annotations", model, debug=True)
+#### Test the model ####
 
-print(IoU_values)
+IoU_video("data/images/Testset", "data/annotations", model, debug=True, use_kalman="max")
+
