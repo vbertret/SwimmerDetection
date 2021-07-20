@@ -12,8 +12,43 @@ from skimage import exposure
 from src.preprocessing.bb_tools import bb_building, neighborhood_bb
 
 class GaussianMixtureBB():
+    """
+    This class is designed in order to make a segmentation of an image with a Gaussian Mixture Model.
+    Some parameters are used outside the class in order to make a segmentation on a video. There is also
+    the possibility to combine the probabilities of the model with a Markov Random Field model.
 
-    def __init__(self, filename=None, margin=100, threshold=0.5,  detect_surface=True, adjust_pt1=0, adjust_pt2=0, use_time=True, graph_cut=True):
+    Attributes
+    ----------
+    model : sklearn.mixture.GaussianMixture
+        the Gaussian Mixture model
+    margin : int
+        the margin used to enlarge the box of the previous frame ( default is 100 )
+    threshold : float
+        the threshold value to classify value between 0 and 1 ( default is 0.5 )
+    ising : tuple
+        the parameters of the Ising Model
+    weight : float
+        the regularization term
+    detect_surface : boolean
+        if true, the method uses the detection of the surface ( default is True )
+    adjust_pt1 : int
+        decreasing the height of the left point ( default is 0 )
+    adjust_pt2 : int
+        increasing the height of the right point ( default is 30 )
+    use_time : boolean
+        if true, the method uses the precedent box to make the prediction ( default is True )
+    graph_cut : boolean
+        if true, the method uses the graph cut algorithm to make the prediction ( default is True )
+    Methods
+    --------
+    set_params(**params)
+        Set the parameters of the estimator
+    predict(filename_img, debug=False, a=0, b=0, precBB=[])
+        Prediction of a Gaussian Mixture Model
+    train(self, dir_name, choice=None)
+        Training of a Gaussian Mixture Model
+    """
+    def __init__(self, filename=None, margin=100, threshold=0.5, ising=(1.7638, 0.2452, 0.1231, 0.1288), weight=10, detect_surface=True, adjust_pt1=0, adjust_pt2=0, use_time=True, graph_cut=True):
         """
         Parameters
         -----------
@@ -21,6 +56,10 @@ class GaussianMixtureBB():
             the margin used to enlarge the box of the previous frame ( default is 100 )
         threshold : float
             the threshold value to classify value between 0 and 1 ( default is 0.5 )
+        ising : tuple
+            the parameters of the Ising Model
+        weight : float
+            the regularization term
         detect_surface : boolean
             if true, the method uses the detection of the surface ( default is True )
         adjust_pt1 : int
@@ -29,6 +68,8 @@ class GaussianMixtureBB():
             increasing the height of the right point ( default is 30 )
         use_time : boolean
             if true, the method uses the precedent box to make the prediction ( default is True )
+        graph_cut : boolean
+            if true, the method uses the graph cut algorithm to make the prediction ( default is True )
         """
 
         # If filename is defined, load the model
@@ -41,10 +82,12 @@ class GaussianMixtureBB():
         self.margin = margin
         self.threshold = threshold
 
-        # Set the graph cut variable
+        # Set the graph cut variables
         self.graph_cut = graph_cut
+        self.ising = ising
+        self.weight = weight
 
-        # Set the detect surface
+        # Set the detect surface variables
         self.detect_surface = detect_surface
         if self.detect_surface:
             self.adjust_pt1 = adjust_pt1
@@ -71,6 +114,12 @@ class GaussianMixtureBB():
         if 'threshold' in params:
             self.threshold = params.get('threshold')
 
+        if 'ising' in params:
+            self.ising = params.get('ising')
+
+        if 'weight' in params:
+            self.weight = params.get('weight')
+
         if 'adjust_pt1' in params:
             self.adjust_pt1 = params.get('adjust_pt1')
 
@@ -79,6 +128,9 @@ class GaussianMixtureBB():
 
         if 'use_time' in params:
             self.use_time = params.get('use_time')
+
+        if 'graph_cut' in params:
+            self.graph_cut = params.get('graph_cut')
 
     def predict(self, filename_img, debug=False, a=0, b=0, precBB=[]):
         """
@@ -161,7 +213,7 @@ class GaussianMixtureBB():
             labels1 = cv.fillPoly(np.ascontiguousarray(labels1*255, dtype=np.uint8), [polygon], 0)/255
 
             # Compute the mask using graph cut
-            mask, self.dst = graph_cut(labels0, labels1, coord)
+            mask, self.dst = graph_cut(labels0, labels1, coord, self.ising, self.weight)
         else:
             # Restructure the probabilities of each pixel to be one as an image
             score_img = prediction_gm[:, 1]
@@ -260,7 +312,7 @@ class GaussianMixtureBB():
         self.model.fit(df)
 
 
-def graph_cut(labels0, labels1, coord):
+def graph_cut(labels0, labels1, coord, ising, weight):
     """
     Compute the graph cut of the model defined in the report
 
@@ -279,6 +331,10 @@ def graph_cut(labels0, labels1, coord):
         Map of probabilities for each pixel to be in the foreground
     coord : list
         the coordinate of the researh area over the all image
+    ising : tuple
+        the parameters of the Ising Model
+    weight : float
+        the regularization term
 
     Returns
     -------
@@ -297,18 +353,17 @@ def graph_cut(labels0, labels1, coord):
     nodeids = g.add_grid_nodes(img_shape)
 
     # Parameters for the anisotropic Ising model
-    beta1 = 1.7638
-    beta2 = 0.2452
-    beta3 = 0.1231
-    beta4 = 0.1288
+    beta1 = ising[0]
+    beta2 = ising[1]
+    beta3 = ising[2]
+    beta4 = ising[3]
 
     # Add vertexes between neighboorhood pixels
     structure = 2 * np.array([[0, 0, 0],
                               [0, 0, beta1],
                               [beta3, beta2, beta4]])
-    weights = 10
 
-    g.add_grid_edges(nodeids, weights, structure, symmetric=True)
+    g.add_grid_edges(nodeids, weight, structure, symmetric=True)
 
     # Add vertexes between each node and the background and foreground node
     prob = labels1 > 0.5

@@ -44,7 +44,18 @@ class Normalize(object):
         return sample
 
 class ColorJitter(object):
+    """
+    Randomly change the brightness, contrast, saturation and hue of an image.
 
+    Args:
+        brightness (float or tuple of python:float (min, max)) – How much to jitter brightness. brightness_factor is chosen uniformly from [max(0, 1 - brightness), 1 + brightness] or the given [min, max]. Should be non negative numbers.
+
+        contrast (float or tuple of python:float (min, max)) – How much to jitter contrast. contrast_factor is chosen uniformly from [max(0, 1 - contrast), 1 + contrast] or the given [min, max]. Should be non negative numbers.
+
+        saturation (float or tuple of python:float (min, max)) – How much to jitter saturation. saturation_factor is chosen uniformly from [max(0, 1 - saturation), 1 + saturation] or the given [min, max]. Should be non negative numbers.
+
+        hue (float or tuple of python:float (min, max)) – How much to jitter hue. hue_factor is chosen uniformly from [-hue, hue] or the given [min, max]. Should have 0<= hue <= 0.5 or -0.5 <= min <= max <= 0.5.
+    """
     def __init__(self, brightness=0, contrast=0, saturation=0, hue=0):
         self.brightness = brightness
         self.contrast = contrast
@@ -58,7 +69,12 @@ class ColorJitter(object):
         return sample
 
 class RandomHorizontalFlip(object):
+    """
+    Horizontally flip the given image randomly with a given probability.
 
+    Args : 
+        p (float) – probability of the image being flipped. Default value is 0.5
+    """
     def __init__(self, p=0.5):
         self.p = p 
 
@@ -76,7 +92,12 @@ class RandomHorizontalFlip(object):
         return sample
 
 class RandomVerticalFlip(object):
+    """
+    Vertically flip the given image randomly with a given probability.
 
+    Args : 
+        p (float) – probability of the image being flipped. Default value is 0.5
+    """
     def __init__(self, p=0.5):
         self.p = p 
 
@@ -94,7 +115,15 @@ class RandomVerticalFlip(object):
         return sample
 
 class GaussianBlur(object):
+    """
+    Blurs image with randomly chosen Gaussian blur.
 
+    Args :
+        kernel_size (int or sequence) – Size of the Gaussian kernel.
+
+        sigma (float or tuple of python:float (min, max)) – Standard deviation to be used for creating kernel to perform blurring. If float, sigma is fixed. If it is tuple of float (min, max), sigma is chosen uniformly at random to lie in the given range.
+    
+    """
     def __init__(self, kernel_size, sigma=(0.1, 2)):
         self.kernel_size = kernel_size
         self.sigma = sigma
@@ -144,7 +173,18 @@ class Rescale(object):
         return {'image': img, 'bounding_box': bounding_box}
 
 class SwimmerDataset(Dataset):
-    """Swimmer dataset."""
+    """Swimmer dataset.
+    
+    The class implements different methods in order to load and make transformation 
+    on all the images of the dataset.
+
+    Attributes
+    ----------
+    transform : torch.transfroms.compose
+        a list of transformations to do on the picture
+    length : int
+        the number of images of the dataset
+    """
 
     def __init__(self, img_dir, ant_dir, transform=None):
         """
@@ -190,61 +230,61 @@ class SwimmerDataset(Dataset):
         if torch.is_tensor(idx):
             idx = idx.tolist()
 
+        # Retrieval of all the filenames and remove some of them
         filenames = sorted(os.listdir(self.img_dir))
         filenames.remove("info.txt")
         filenames.remove("background")
 
+        # Read the picture corresponding to the index idx
         image = io.imread(self.img_dir + "/" + filenames[idx])
 
+        # Read the annotation corresponding to the index idx
         ant_name = self.ant_dir + "/" + filenames[idx].split("/")[-1].split(".jpg")[0] + ".json"
-
         bounding_box = read_annotation(ant_name)
+
+        # Convert the format of the bounding from [x, y ,w, h] to [x1, y1, x2, y2]
         bounding_box = [bounding_box[0], bounding_box[1], bounding_box[0] + bounding_box[2], bounding_box[1] + bounding_box[3]]
 
+        # Return a dict with 2 keys, one for the image and the other for the annotation
         sample = {'image': image, 'bounding_box': np.array(bounding_box)}
 
+        # If specified, make the transformation on the image
         if self.transform is not None:
             sample = self.transform(sample)
 
         return sample
 
-
-class TransformedDataset(Dataset):
-
-  def __init__(self, img, bb):
-    self.img = img  #img path
-    self.bb = bb  #mask path
-    self.len = len(os.listdir(self.img))
-
-  def __getitem__(self, index):
-    ls_img = sorted(os.listdir(self.img))
-    ls_bb = sorted(os.listdir(self.bb))
-
-    img_file_path = os.path.join(self.img, ls_img[index])
-    img_tensor = torch.load(img_file_path)
-
-    bb_file_path = os.path.join(self.bb, ls_bb[index])
-    bb_tensor = torch.load(bb_file_path)
-
-    sample = {"image" : img_tensor, "bounding_box" : bb_tensor}
-
-    return sample
-
-  def __len__(self):
-    return self.len 
-
-
 def get_mean_std(dataset):
-    loader = DataLoader(dataset, batch_size=len(dataset), shuffle=True, num_workers=5)
+    """
+    Compute the mean and the standard deviation of each channel of a dataset
+    
+    Parameter
+    ---------
+    dataset : torch.utils.data.Dataset
+        a dataset which each sample is a dictionnary with the key 'image' for the picture
+    
+    Return
+    ------
+    mean : list
+        list of the mean for each channel
+    std : list
+        list of the standard deviation for each channel
+    """
 
+    # Load the data into a dataloader
+    loader = DataLoader(dataset, batch_size=len(dataset), num_workers=8)
+
+    # Initialize the value for the sum
     channels_sum, channels_squares_sum, num_batches = 0, 0, 0
 
+    # Make the summation of the mean and the mean square along all the batches
     for sample in loader:
         data = sample['image']
         channels_sum += torch.mean(data, dim=[0, 2, 3])
         channels_squares_sum += torch.mean(data ** 2, dim=[0, 2, 3])
         num_batches += 1
 
+    # Compute the mean and the standard deviation
     mean = channels_sum/num_batches
     std = (channels_squares_sum/num_batches - mean**2/num_batches)**0.5
 

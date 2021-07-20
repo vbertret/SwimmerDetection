@@ -63,7 +63,7 @@ def union(box1, box2):
 
 def bb_building(mask):
     """
-    Find the best bouding box according to the mask
+    Find the best bounding box according to the mask
 
     Parameter
     ---------

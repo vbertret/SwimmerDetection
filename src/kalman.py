@@ -1,9 +1,46 @@
 import numpy as np
 
-
 class KalmanFilter(object):
+    """
+    Implementation of the Kalman Filter
 
+    This class implements a kalman filter in order to predict
+    the coordinates of the middle of the bounding box containing 
+    the swimmer. For more details, see the report.
+
+    Attributes
+    ----------
+    dt : float
+        the sampling time
+    x : list [x_middle, y_middle, vx, vy]
+        the coordinate of the middle and the speed of the bounding box
+    A : np.array
+        the state transition matrix
+    H : np.array
+        the Measurement Mapping Matrix
+    Q : np.array
+        the Process Noise Covariance
+    R : np.array
+        the Initial Measurement Noise Covariance
+    P : np.array
+        the Initial Covariance Matrix
+
+    Methods
+    -------
+    predict():
+        Make a prediction of the bounding box
+    update(z):
+        Update the parameter according to the coordinates founded by an estimator
+    """
     def __init__(self, dt, x_ini):
+        """
+        Parameters
+        ----------
+        dt : float
+            the time between 2 frames
+        x_ini : [x_middle, y_middle, vx, vy]
+            the initialization values
+        """
         # Define sampling time ( time between 2 frames)
         self.dt = dt
 
@@ -37,6 +74,14 @@ class KalmanFilter(object):
                            [0, 0, 0, 10]])
 
     def predict(self):
+        """
+        Prediction of the Kalman Filter
+
+        Return
+        ------
+        x : [x_middle, y_middle]
+            the coordinates of the middle of the bouding box
+        """
         # Update time state
         # x_k = A*x_(k-1)
         self.x = np.dot(self.A, self.x)
@@ -47,6 +92,19 @@ class KalmanFilter(object):
         return self.x[:2]
 
     def update(self, z):
+        """
+        Update of the Kalman Filter
+
+        Parameter
+        ---------
+        z : list [x_middle, y_middle]
+            the coordinates of the middle of the bounding box founded at a step
+
+        Return
+        ------
+        x : [x_middle, y_middle]
+            the coordinates of the middle of the bouding box
+        """
         # S = H*P*H' + R
         S = np.dot(self.H, np.dot(self.P, self.H.T)) + self.R
 
