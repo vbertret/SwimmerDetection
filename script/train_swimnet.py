@@ -2,7 +2,7 @@ import torch
 from torchvision import transforms
 from torchvision.transforms import autoaugment
 from src.deep_learning import Swimnet, train, train_and_test, plot_bouding_box
-from src.preprocessing.dataset import RandomHorizontalFlip, RandomVerticalFlip, Rescale, ToTensor, Normalize, SwimmerDataset, get_mean_std, TransformedDataset, ColorJitter, GaussianBlur
+from src.preprocessing.dataset import RandomHorizontalFlip, RandomVerticalFlip, Rescale, ToTensor, Normalize, SwimmerDataset, get_mean_std, ColorJitter, GaussianBlur
 from torch.utils.data import DataLoader
 import matplotlib.pyplot as plt
 import cv2.cv2 as cv
