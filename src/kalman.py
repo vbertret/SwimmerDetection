@@ -35,12 +35,12 @@ class KalmanFilter(object):
     -------
     predict():
         Make a prediction of the middle of the bounding box
-    predictBB(bounding_box, method):
+    predictBB(bounding_box, method, w, h):
         Make the prediction of the entire bounding box
     update(z):
         Update the parameter according to the coordinates founded by an estimator
     """
-    def __init__(self, dt, x_ini, method):
+    def __init__(self, dt, x_ini, method, w, h):
         """
         Parameters
         ----------
@@ -50,6 +50,10 @@ class KalmanFilter(object):
             the initialization values
         method : str
             the name of the method to compute the height and the width of the bounding box
+        w : int
+            the width of the first bounding box found
+        h : int
+            the height of the first bounding box found
         """
         # Define sampling time ( time between 2 frames)
         self.dt = dt
@@ -74,8 +78,8 @@ class KalmanFilter(object):
                            [0, 0, 0, 10]])
 
         # Initial Measurement Noise Covariance
-        self.R = np.array([[20, 0],
-                           [0, 20]])
+        self.R = np.array([[1, 0],
+                           [0, 1]])
 
         # Initial Covariance Matrix
         self.P = np.array([[5, 0, 0, 0],
@@ -88,11 +92,11 @@ class KalmanFilter(object):
         if self.method == "avg":
             self.beta = 0.95
             self.nbstep=1
-            self.S_w = 0
-            self.S_h = 0
+            self.S_w = (1-self.beta) * w
+            self.S_h = (1-self.beta) * h
         elif self.method == "max":
-            self.max_h = []
-            self.max_w = []
+            self.max_h = [h]
+            self.max_w = [w]
 
     def predict(self):
         """
