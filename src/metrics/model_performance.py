@@ -296,6 +296,8 @@ def IoU_video(dir_name, dir_annot, model, use_kalman=None, choice=None, debug=Fa
     data = f.readlines()
     f.close()
 
+    mean_fps = 0
+
     # Preprocessing to have a structured format
     data_videos = [line.split(";") for line in data]
     data_videos = [[line[0], int(line[1]), int(line[2]), line[3].replace("\n", "")] for line in data_videos]
@@ -313,6 +315,7 @@ def IoU_video(dir_name, dir_annot, model, use_kalman=None, choice=None, debug=Fa
     quit = False
     stat_total = [0, 0, 0, 0]
     nb_total = 0
+    var_intra = 0
 
     # Computation of the IoU for all the videos in Queue
     for i in queue:
@@ -383,7 +386,7 @@ def IoU_video(dir_name, dir_annot, model, use_kalman=None, choice=None, debug=Fa
                     if not found:
                         x_p, y_p, w_p, h_p = BB
                         x_ini = np.array([[x_p + w_p/2], [y_p + h_p/2], [0], [0]])
-                        kf = KalmanFilter(1/60, x_ini, use_kalman)
+                        kf = KalmanFilter(1/60, x_ini, use_kalman, w_p, h_p)
                         found = True
                     else:
                         BB = kf.predictBB(BB, use_kalman)
@@ -408,6 +411,7 @@ def IoU_video(dir_name, dir_annot, model, use_kalman=None, choice=None, debug=Fa
 
             # Computation of the number of frames per second
             fps = 1 / (time.time() - t_ite + 10e-10)
+            mean_fps += fps
 
             if debug:
                 # Read the image
@@ -454,11 +458,12 @@ def IoU_video(dir_name, dir_annot, model, use_kalman=None, choice=None, debug=Fa
         stat_total[1] = stat_total[1] + no_box
         stat_total[2] = stat_total[2] + np.sum(IoU_video)
         stat_total[3] = stat_total[3] + np.sum(score_video)
+        var_intra += np.sum(np.power(np.array(IoU_video), 2))/nb - (np.sum(np.array(IoU_video))/nb) ** 2
         nb_total += nb
 
-        if debug:
-            print("mean IoU : ", stat_values[-1][0], " Number of images with no box : ", stat_values[-1][1],
-                " IoU mean with no box : ", stat_values[-1][2], " mean score : ", stat_values[-1][3])
+
+        print("mean IoU : ", stat_values[-1][0], " Number of images with no box : ", stat_values[-1][1],
+            " IoU mean with no box : ", stat_values[-1][2], " mean score : ", stat_values[-1][3])
 
         if quit:
             break
@@ -468,9 +473,13 @@ def IoU_video(dir_name, dir_annot, model, use_kalman=None, choice=None, debug=Fa
     stat_total[3] = stat_total[3]/nb_total
     stat_total[2] = stat_total[2]/(nb_total - stat_total[1])
     stat_values.append(stat_total)
-    if debug:
-        print("TOTAL mean IoU : ", stat_total[0], " Number of images with no box : ", stat_total[1],
-            " IoU mean with no box : ", stat_total[2], " mean score : ", stat_total[3])
+
+    int_val = np.array([val[0] for val in stat_values][0:-1])
+    var_extra = np.sum(np.power(int_val, 2))/3 - np.power(np.sum(int_val)/3, 2)
+    var_intra = var_intra/3
+
+    print("TOTAL mean IoU : ", stat_total[0], " Number of images with no box : ", stat_total[1],
+        " IoU mean with no box : ", stat_total[2], " mean score : ", stat_total[3], "mean fps : ", mean_fps/nb_total, "variance intra: ", var_intra, "variance extra : ", var_extra)
 
     # Destroy all windows
     cv.destroyAllWindows()
