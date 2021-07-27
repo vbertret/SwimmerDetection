@@ -186,7 +186,10 @@ class ColorBB():
             cv.waitKey(1)
 
         # Building the best bounding box according to the mask
-        best_rectangle = bb_building(mask)
+        if self.color_cvt == cv.COLOR_BGR2HSV:
+            best_rectangle = bb_building(mask, 25)
+        else:
+            best_rectangle = bb_building(mask, 5)
 
         # Ajustement of the best box for the initial size of the image
         if len(best_rectangle)!=0 and coord[2] != 640 and coord[3] !=480:

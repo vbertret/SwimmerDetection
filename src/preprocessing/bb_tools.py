@@ -61,7 +61,7 @@ def union(box1, box2):
     return x_un, y_un, w_un, h_un
 
 
-def bb_building(mask):
+def bb_building(mask, union_margin):
     """
     Find the best bounding box according to the mask
 
@@ -86,7 +86,8 @@ def bb_building(mask):
         if cv.contourArea(cnt) > 800:
             find = False
             for i, (x_r, y_r, w_r, h_r) in enumerate(rects):
-                x_in, y_in, w_in, h_in = intersection([x_r - 20, y_r, w_r + 40, h_r], [x - 20, y, w + 40, h])
+                m = union_margin
+                x_in, y_in, w_in, h_in = intersection([x_r - m, y_r, w_r + 2*m, h_r], [x - m, y, w + 2*m, h])
                 if w_in != 0 and h_in != 0:
                     new_rect = union([x_r, y_r, w_r, h_r], [x, y, w, h])
                     rects[i] = new_rect

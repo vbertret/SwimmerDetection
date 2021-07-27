@@ -48,7 +48,7 @@ class GaussianMixtureBB():
     train(self, dir_name, choice=None)
         Training of a Gaussian Mixture Model
     """
-    def __init__(self, filename=None, margin=100, threshold=0.5, ising=(1.7638, 0.2452, 0.1231, 0.1288), weight=10, detect_surface=True, adjust_pt1=0, adjust_pt2=0, use_time=True, graph_cut=True):
+    def __init__(self, filename=None, margin=100, threshold=0.5, ising=(1.7638, 0.2452, 0.1231, 0.1288), weight=10, detect_surface=True, adjust_pt1=0, adjust_pt2=0, use_time=True, graph_cut=False):
         """
         Parameters
         -----------
@@ -69,7 +69,7 @@ class GaussianMixtureBB():
         use_time : boolean
             if true, the method uses the precedent box to make the prediction ( default is True )
         graph_cut : boolean
-            if true, the method uses the graph cut algorithm to make the prediction ( default is True )
+            if true, the method uses the graph cut algorithm to make the prediction ( default is False )
         """
 
         # If filename is defined, load the model
@@ -230,7 +230,7 @@ class GaussianMixtureBB():
             cv.waitKey(1)
 
         # Building the best bounding box according to the mask
-        best_rectangle = bb_building(mask)
+        best_rectangle = bb_building(mask, 0)
 
         # Ajustement of the best box for the initial size of the image
         if len(best_rectangle)!=0 and len(precBB)!=0:
